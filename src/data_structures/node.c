@@ -4,6 +4,7 @@
 */
 
 #include <node.h>
+#include <stdio.h>
 #include <string.h>
 
 struct _node
@@ -120,24 +121,29 @@ Node_CopyKey(const node_t* node, char** keyptr)
 	return 0;
 }
 
-int
+size_t
 Node_CopyData(const node_t* node, void** dataptr)
 {
-	if (!node || !(node->data))
+	if (!node)
 	{
 		errno = EINVAL;
-		return -1;
+		return 0;
 	}
 	size_t len = node->data_sz;
+	if (len == 0)
+	{
+		*dataptr = NULL;
+		return len;
+	}
 	void* tmp;
 	if ((tmp = malloc(len)) == NULL)
 	{
 		errno = ENOMEM;
-		return -1;
+		return 0;
 	}
 	memcpy(tmp, node->data, len);
 	*dataptr = tmp;
-	return 0;
+	return len;
 }
 
 int
@@ -182,8 +188,8 @@ Node_Fold(node_t* node)
 		errno = EINVAL;
 		return -1;
 	}
-	node->prev->next = node->next;
-	node->next->prev = node->prev;
+	if (node->prev) node->prev->next = node->next;
+	if (node->next) node->next->prev = node->prev;
 	Node_FreeStruct(node);
 	return 0;
 }
@@ -207,9 +213,12 @@ Node_FreeStruct(node_t* node)
 {
 	if (node)
 	{
+		if (node->prev) node->prev->next = node->next;
+		if (node->next) node->next->prev = node->prev;
 		Node_FreeKey(node);
 		Node_FreeData(node);
 		free(node);
+		node = NULL;
 	}
 	return;
 }

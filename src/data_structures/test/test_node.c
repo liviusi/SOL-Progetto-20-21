@@ -104,15 +104,16 @@ int main()
 	Node_ReplaceWithPrevious(&node2);
 	Node_ReplaceWithNext(&node1);
 	Node_ReplaceWithNext(&node10);
-	Node_Fold(node4);
-	fprintf(stderr, "Nodes 2, 4, 1 have been purged.\n");
+	Node_Fold(node3);
+	Node_Fold(node9);
+	fprintf(stderr, "Nodes 1, 2, 3, 9, 10 have been purged.\n");
 	fprintf(stderr, "Iterating over previous node.\n");
 	while (1)
 	{
 		if (i == 0)
 		{
 			i = 1;
-			tmp = node9;
+			tmp = node8;
 		}
 		else tmp = (node_t*) Node_GetPrevious(tmp);
 		if (tmp == NULL) break;
@@ -128,7 +129,7 @@ int main()
 		if (i == 1)
 		{
 			i = 0;
-			tmp = node3;
+			tmp = node4;
 		}
 		else tmp = (node_t*) Node_GetNext(tmp);
 		if (tmp == NULL) break;
@@ -140,11 +141,10 @@ int main()
 	}
 	
 	fprintf(stderr, "Attempting to free allocated resources.\n");
-	Node_FreeStruct(node3);
+	Node_FreeStruct(node4);
 	Node_FreeStruct(node5);
 	Node_FreeStruct(node6);
 	Node_FreeStruct(node7);
-	Node_FreeStruct(node8);
-	Node_FreeStruct(node9);
+	Node_Fold(node8);
 	fprintf(stderr, "Resources have been freed.\n");
 }

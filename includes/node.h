@@ -17,7 +17,7 @@
  * - 1x C style string (hereinafter referred to as "key");
  * - 1x pointer to generic data ("data");
  * - 1x unsigned long denoting data's size.
- * All the struct elements will be preserved till explicitly freed as - on creation -
+ * All the Struct fields will be preserved till explicitly freed as - on creation -
  * the node struct will allocate memory for both key and data.
 */
 typedef struct _node node_t;
@@ -75,11 +75,11 @@ Node_CopyKey(const node_t*, char**);
 
 /**
  * @brief Copy node's data param to non-allocated char buffer.
- * @returns 0 on success, -1 on failure.
+ * @returns Size of data buffer on success, 0 otherwise.
  * @exception It sets errno to EINVAL if and only if first param is NULL, (it sets errno to)
  * ENOMEM if and only if any memory allocation fails.
 */
-int
+size_t
 Node_CopyData(const node_t*, void**);
 
 /**
