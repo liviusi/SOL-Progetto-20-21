@@ -34,6 +34,18 @@ LinkedList_Init()
 		return NULL;
 }
 
+const node_t*
+LinkedList_GetFirst(const linked_list_t* list)
+{
+	return list->first;
+}
+
+const node_t*
+LinkedList_GetLast(const linked_list_t* list)
+{
+	return list->last;
+}
+
 int
 LinkedList_PushFront(linked_list_t* list, const char* key,
 		size_t key_size, const void* data, size_t data_size)
@@ -160,9 +172,9 @@ LinkedList_PopBack(linked_list_t* list, char** key, void** data)
 }
 
 void
-LinkedList_Print(linked_list_t* list)
+LinkedList_Print(const linked_list_t* list)
 {
-	node_t* curr = list->first;
+	const node_t* curr = list->first;
 	char* key = NULL;
 	while (1)
 	{
@@ -173,7 +185,7 @@ LinkedList_Print(linked_list_t* list)
 		}
 		if (Node_CopyKey(curr, &key) != 0) fprintf(stdout, "NULL -> ");
 		else fprintf(stdout, "%s -> ", key);
-		curr = (node_t*) Node_GetNext(curr);
+		curr = Node_GetNext(curr);
 		free(key);
 	}
 	return;
@@ -191,6 +203,6 @@ LinkedList_Free(linked_list_t* list)
 		curr = (node_t*) Node_GetNext(curr);
 		Node_FreeStruct(tmp);
 	}
-	free(list);
+	if (list) free(list);
 	return;
 }

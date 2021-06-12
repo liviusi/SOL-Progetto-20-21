@@ -5,9 +5,11 @@
 
 #ifndef _LINKED_LIST_H_
 #define _LINKED_LIST_H_
-#include <stdlib.h>
 
-// Struct elements are not exposed to maintain invariant.
+#include <stdlib.h>
+#include <node.h>
+
+// Struct fields are not exposed to maintain invariant.
 typedef struct _linked_list linked_list_t;
 
 /**
@@ -16,6 +18,22 @@ typedef struct _linked_list linked_list_t;
  * @exception It sets errno to ENOMEM if and only if needed memory allocation fails.
 */
 linked_list_t* LinkedList_Init();
+
+/**
+ * @brief Getter for first element of linked list.
+ * @returns Pointer to first element of the list. NULL is returned if and only if
+ * list is empty.
+*/
+const node_t*
+LinkedList_GetFirst(const linked_list_t*);
+
+/**
+ * @brief Getter for last element of linked list.
+ * @returns Pointer to last element of the list. NULL is returned if and only if
+ * list is empty.
+*/
+const node_t*
+LinkedList_GetLast(const linked_list_t*);
 
 /**
  * @brief Creates and pushes node with given parameters to first position in linked list.
@@ -65,6 +83,6 @@ LinkedList_Free(linked_list_t*);
  * Utility print function.
 */
 void
-LinkedList_Print(linked_list_t* list);
+LinkedList_Print(const linked_list_t* list);
 
 #endif
