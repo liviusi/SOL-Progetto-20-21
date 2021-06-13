@@ -111,8 +111,6 @@ Node_Fold(node_t*);
  * Free memory allocated.
 */
 void
-Node_FreeKey(node_t*),
-Node_FreeData(node_t*),
-Node_FreeStruct(node_t*);
+Node_Free(node_t*);
 
 #endif

@@ -158,7 +158,7 @@ Node_ReplaceWithNext(node_t** nodeptr)
 	node_t* tmp = node->next;
 	if (tmp && tmp->prev) tmp->prev = node->prev;
 	if (node->prev) node->prev->next = tmp;
-	Node_FreeStruct(node);
+	Node_Free(node);
 	*nodeptr = tmp;
 	return 0;
 }
@@ -175,7 +175,7 @@ Node_ReplaceWithPrevious(node_t** nodeptr)
 	node_t* tmp = node->prev;
 	if (tmp && tmp->next) tmp->next = node->next;
 	if (node->next) node->next->prev = tmp;
-	Node_FreeStruct(node);
+	Node_Free(node);
 	*nodeptr = tmp;
 	return 0;
 }
@@ -190,7 +190,7 @@ Node_Fold(node_t* node)
 	}
 	if (node->prev) node->prev->next = node->next;
 	if (node->next) node->next->prev = node->prev;
-	Node_FreeStruct(node);
+	Node_Free(node);
 	return 0;
 }
 
@@ -209,7 +209,7 @@ Node_FreeData(node_t* node)
 }
 
 void
-Node_FreeStruct(node_t* node)
+Node_Free(node_t* node)
 {
 	if (node)
 	{

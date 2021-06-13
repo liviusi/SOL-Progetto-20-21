@@ -120,13 +120,15 @@ LinkedList_PopFront(linked_list_t* list, char** key, void** data)
 		if (errno == ENOMEM) return -1; // ENOMEM is considered a fatal error
 		else *key = NULL; // EINVAL is not considered a fatal error
 	}
-	if ((data != NULL) && (Node_CopyData(list->first, data) != 0))
+	if ((data != NULL) && (Node_CopyData(list->first, data) == 0))
 	{
+		fprintf(stderr, "ERRNO = %d\n", errno);
 		if (errno == ENOMEM) return -1; // ENOMEM is considered a fatal error
 		else *data = NULL; // EINVAL is not considered a fatal error
 	}
 	if (list->nelems == 0)
 	{
+		Node_Free(list->first);
 		list->first = NULL;
 		list->last = NULL;
 	}
@@ -153,13 +155,14 @@ LinkedList_PopBack(linked_list_t* list, char** key, void** data)
 		if (errno == ENOMEM) return -1; // ENOMEM is considered a fatal error
 		else *key = NULL; // EINVAL is not considered a fatal error
 	}
-	if ((data != NULL) && (Node_CopyData(list->last, data) != 0))
+	if ((data != NULL) && (Node_CopyData(list->last, data) == 0))
 	{
 		if (errno == ENOMEM) return -1; // ENOMEM is considered a fatal error
 		else *data = NULL; // EINVAL is not considered a fatal error
 	}
 	if (list->nelems == 0)
 	{
+		Node_Free(list->first);
 		list->first = NULL;
 		list->last = NULL;
 	}
@@ -169,6 +172,32 @@ LinkedList_PopBack(linked_list_t* list, char** key, void** data)
 			return -1;
 	}
 	return 0;
+}
+
+int
+LinkedList_Fold(linked_list_t* list, const node_t* node)
+{
+	if (!node || !list)
+	{
+		errno = EINVAL;
+		return -1;
+	}
+	const node_t* curr = list->first;
+	while (curr != NULL)
+	{
+		if (curr != node)
+			curr = Node_GetNext(curr);
+		else
+		{
+			if (Node_GetPrevious(node))
+			{
+				if (curr != list->last) return Node_Fold((node_t*) node);
+				else return LinkedList_PopBack(list, NULL, NULL);
+			}
+			else return LinkedList_PopFront(list, NULL, NULL);
+		}
+	}
+	return 0; // node does not appear in list
 }
 
 void
@@ -201,8 +230,8 @@ LinkedList_Free(linked_list_t* list)
 		if (curr == NULL) break;
 		tmp = curr;
 		curr = (node_t*) Node_GetNext(curr);
-		Node_FreeStruct(tmp);
+		Node_Free(tmp);
 	}
-	if (list) free(list);
+	free(list);
 	return;
 }

@@ -141,10 +141,10 @@ int main()
 	}
 	
 	fprintf(stderr, "Attempting to free allocated resources.\n");
-	Node_FreeStruct(node4);
-	Node_FreeStruct(node5);
-	Node_FreeStruct(node6);
-	Node_FreeStruct(node7);
+	Node_Free(node4);
+	Node_Free(node5);
+	Node_Free(node6);
+	Node_Free(node7);
 	Node_Fold(node8);
 	fprintf(stderr, "Resources have been freed.\n");
 }

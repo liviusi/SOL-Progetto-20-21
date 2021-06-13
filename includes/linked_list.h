@@ -73,6 +73,9 @@ LinkedList_PopFront(linked_list_t*, char**, void**);
 int
 LinkedList_PopBack(linked_list_t*, char**, void**);
 
+int
+LinkedList_Fold(linked_list_t*, const node_t*);
+
 /**
  * Free allocated resources.
 */

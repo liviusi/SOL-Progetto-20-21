@@ -64,10 +64,16 @@ int main()
 	strncpy(key, node10_tmp_key, 128);
 	strncpy(data, node10_tmp_data, 128);
 	HashTable_Insert(table, key, strlen(key) + 1, (void*) data, strlen(data) + 1);
+	HashTable_Insert(table, key, strlen(key) + 1, (void*) data, strlen(data) + 1);
 	HashTable_Print(table);
 	printf("\n\n");
 	HashTable_DeleteNode(table, node1_tmp_key);
+	HashTable_DeleteNode(table, node7_tmp_key);
 	HashTable_DeleteNode(table, node9_tmp_key);
+	HashTable_Print(table);
+	printf("\n\n");
+	HashTable_DeleteNode(table, node5_tmp_key);
+	HashTable_DeleteNode(table, node5_tmp_key);
 	HashTable_Print(table);
 	HashTable_Free(table);
 	free(key);

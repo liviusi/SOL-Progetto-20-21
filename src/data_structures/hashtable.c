@@ -107,7 +107,10 @@ HashTable_Insert(hashtable_t* table, const void* key,
 		err = Node_CopyKey(curr, &curr_key);
 		if (err != 0) return -1;
 		if (table->hash_compare(key, curr_key) == 0) // duplicates are not allowed
+		{
+			free(curr_key);
 			return 0;
+		}
 		free(curr_key);
 	}
 	err = LinkedList_PushBack((table->buckets)[hash], key, key_size, data, data_size);
@@ -177,7 +180,6 @@ HashTable_DeleteNode(hashtable_t* table, const void* key)
 	}
 	size_t hash = table->hash_function((void*) key) % table->buckets_no;
 	const node_t* curr;
-	const node_t* prev;
 	char* curr_key;
 	int err;
 	for (curr = LinkedList_GetFirst((table->buckets)[hash]); curr != NULL; curr = Node_GetNext(curr))
@@ -186,11 +188,7 @@ HashTable_DeleteNode(hashtable_t* table, const void* key)
 		if (err != 0) return -1;
 		if (table->hash_compare(key, curr_key) == 0)
 		{
-			prev = Node_GetPrevious(curr);
-			if (prev) // Node can be easily deleted as it is not the first one
-				err = Node_Fold((node_t*) curr);
-			else // The linked list needs to be modified to properly address its first element
-				err = LinkedList_PopFront((table->buckets)[hash], NULL, NULL);
+			err = LinkedList_Fold((table->buckets)[hash], curr);
 			if (err != 0) return -1;
 			free(curr_key);
 			return 1;
