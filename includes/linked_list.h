@@ -73,11 +73,17 @@ LinkedList_PopFront(linked_list_t*, char**, void**);
 int
 LinkedList_PopBack(linked_list_t*, char**, void**);
 
+/**
+ * @brief Folds list over first occurrence of given node (tl;dr it works the same
+ * way as Node_Fold). It frees node in list.
+ * @returns 0 on success, -1 on failure.
+ * @exception It sets errno to EINVAL if and only if list or node are NULL.
+*/
 int
 LinkedList_Fold(linked_list_t*, const node_t*);
 
 /**
- * Free allocated resources.
+ * Frees allocated resources.
 */
 void
 LinkedList_Free(linked_list_t*);

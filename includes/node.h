@@ -17,8 +17,6 @@
  * - 1x C style string (hereinafter referred to as "key");
  * - 1x pointer to generic data ("data");
  * - 1x unsigned long denoting data's size.
- * All the Struct fields will be preserved till explicitly freed as - on creation -
- * the node struct will allocate memory for both key and data.
 */
 typedef struct _node node_t;
 
@@ -108,7 +106,7 @@ int
 Node_Fold(node_t*);
 
 /**
- * Free memory allocated.
+ * Frees allocated resources.
 */
 void
 Node_Free(node_t*);

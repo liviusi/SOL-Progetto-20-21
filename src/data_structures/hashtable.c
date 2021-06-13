@@ -19,7 +19,7 @@ struct _hashtable
 	int (*hash_compare) (const void*, const void*);
 };
 
-size_t 
+size_t
 HashTable_HashFunction(const void* buffer)
 {
 	if (buffer == NULL) return 0;
