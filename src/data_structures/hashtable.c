@@ -51,8 +51,7 @@ hashtable_t*
 HashTable_Init(size_t buckets_no, size_t (*hash_function) (const void*), 
 		int (*hash_compare) (const void*, const void*))
 {
-	hashtable_t* table;
-	table = (hashtable_t*) malloc(sizeof(hashtable_t));
+	hashtable_t* table = (hashtable_t*) malloc(sizeof(hashtable_t));
 	if (table == NULL)
 	{
 		errno = ENOMEM;
