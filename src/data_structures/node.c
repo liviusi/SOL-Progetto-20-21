@@ -19,31 +19,26 @@ struct _node
 node_t*
 Node_Create(const char* key, size_t key_size, const void* data, size_t data_size)
 {
-	node_t* tmp = (node_t*) malloc(sizeof(node_t));
+	node_t* tmp = NULL;
+	char* tmp_key = NULL;
+	void* tmp_data = NULL;
+	tmp = (node_t*) malloc(sizeof(node_t));
 	if (!tmp) goto no_more_memory;
 	if (key_size != 0)
 	{
-		tmp->key = (char*) malloc(key_size);
-		if (!(tmp->key))
-		{
-			free (tmp);
-			goto no_more_memory;
-		}
-		memcpy(tmp->key, key, key_size);
+		tmp_key = (char*) malloc(key_size);
+		if (!tmp_key) goto no_more_memory;
+		memcpy(tmp_key, key, key_size);
+		
 	}
-	else tmp->key = NULL;
+	tmp->key = tmp_key;
 	if (data_size != 0)
 	{
-		tmp->data = malloc(data_size);
-		if (!(tmp->data))
-		{
-			free(tmp->key);
-			free(tmp);
-			goto no_more_memory;
-		}
-		memcpy(tmp->data, data, data_size);
+		tmp_data = malloc(data_size);
+		if (!tmp_data) goto no_more_memory;
+		memcpy(tmp_data, data, data_size);
 	}
-	else tmp->data = NULL;
+	tmp->data = tmp_data;
 	tmp->data_sz = data_size;
 	tmp->next = NULL;
 	tmp->prev = NULL;
@@ -51,6 +46,9 @@ Node_Create(const char* key, size_t key_size, const void* data, size_t data_size
 	return tmp;
 
 	no_more_memory:
+		free(tmp_key);
+		free(tmp_data);
+		free(tmp);
 		errno = ENOMEM;
 		return NULL;
 }
