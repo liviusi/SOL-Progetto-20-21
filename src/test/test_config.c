@@ -1,3 +1,8 @@
+/**
+ * @brief Tests for config struct and related functions.
+ * @author Giacomo Trapani.
+*/
+
 #include <config.h>
 #include <stdio.h>
 
