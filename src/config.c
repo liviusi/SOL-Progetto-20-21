@@ -1,3 +1,8 @@
+/**
+ * @brief Source file for config header.
+ * @author Giacomo Trapani.
+*/
+
 #include <config.h>
 #include <errno.h>
 #include <stdio.h>
