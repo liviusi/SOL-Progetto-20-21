@@ -37,24 +37,8 @@
 		return -1; \
 	}
 
-#define RESET_LAST_OP \
-	last_op.open = false; \
-	last_op.lock = false; \
-	last_op.create = false; \
-	memset(last_op.pathname, 0, MAXPATH);
-
-typedef struct _last_operation
-{
-	bool open;
-	bool lock;
-	bool create;
-	char pathname[MAXPATH];
-} last_operation_t;
-
-
 static int socket_fd = -1;
 static char socketpath[MAXPATH];
-static last_operation_t last_op = { .open = false, .lock = false, .create = false };
 
 int
 openConnection(const char* sockname, int msec, const struct timespec abstime)
@@ -150,11 +134,6 @@ openFile(const char* pathname, int flags)
 	memset(buffer, 0, BUFFERLEN);
 	HANDLE_ANSWER(buffer, BUFFERLEN, OPEN, pathname);
 
-	last_op.open = true;
-	last_op.lock = IS_O_LOCK_SET(flags);
-	last_op.create = IS_O_CREATE_SET(flags);
-	strncpy(last_op.pathname, pathname, MAXPATH);
-
 	return 0;
 }
 
@@ -187,8 +166,6 @@ closeFile(const char* pathname)
 
 	memset(buffer, 0, BUFFERLEN);
 	HANDLE_ANSWER(buffer, BUFFERLEN, CLOSE, pathname);
-
-	RESET_LAST_OP;
 
 	return 0;
 }
