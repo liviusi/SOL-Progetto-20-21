@@ -1,3 +1,8 @@
+/**
+ * @brief Header file made for parsing config.txt file into a server config struct.
+ * @author Giacomo Trapani.
+*/
+
 #ifndef _CONFIG_H_
 #define _CONFIG_H_
 
