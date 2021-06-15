@@ -68,11 +68,19 @@ HashTable_Find(const hashtable_t*, const void*);
  * @brief Gets data corresponding to the given key, it will be written inside third param
  * (which must not refer to a pre-allocated buffer). Returns data size.
  * @returns Size of data buffer on success, 0 on failure.
- * @exception It sets errno to EINVAL if and only if table or entry is NULL,
+ * @exception It sets errno to EINVAL if and only if table or entry are NULL,
  * (it sets errno to) ENOMEM if and only if needed memory allocation fails.
 */
 size_t
 HashTable_CopyOutData(const hashtable_t*, const void*, void**);
+
+/**
+ * @brief Gets pointer to data corresponding to the given key.
+ * @returns Pointer to data.
+ * @exception It sets errno to EINVAL if key or table are NULL.
+*/
+void*
+HashTable_GetPointerToData(const hashtable_t*, const void*);
 
 /**
  * @brief Deletes node corresponding to given key from hash table.
