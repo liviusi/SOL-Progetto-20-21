@@ -81,6 +81,14 @@ size_t
 Node_CopyData(const node_t*, void**);
 
 /**
+ * @brief Gets a pointer to node's data param.
+ * @returns Pointer to node's data on success (which may be NULL), NULL on failure.
+ * @exception It sets errno to EINVAL if and only if param is NULL. 
+*/
+const void*
+Node_GetData(const node_t*);
+
+/**
  * @brief Replaces node with the node its next field points to. It frees the given node struct.
  * @returns 0 on success, -1 on failure.
  * @exception It sets errno to EINVAL if and only if param is NULL.

@@ -79,7 +79,7 @@ HashTable_CopyOutData(const hashtable_t*, const void*, void**);
  * @returns Pointer to data.
  * @exception It sets errno to EINVAL if key or table are NULL.
 */
-void*
+const void*
 HashTable_GetPointerToData(const hashtable_t*, const void*);
 
 /**

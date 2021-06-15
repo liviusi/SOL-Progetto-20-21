@@ -169,6 +169,35 @@ HashTable_CopyOutData(const hashtable_t* table, const void* key, void** data)
 	return 0;
 }
 
+const void*
+HashTable_GetPointerToData(const hashtable_t* table, const void* key)
+{
+	if (!table || !key)
+	{
+		errno = EINVAL;
+		return NULL;
+	}
+	size_t hash = table->hash_function((void*) key) % table->buckets_no;
+	const node_t* curr;
+	char* curr_key;
+	int err;
+	const void* tmp;
+	for (curr = LinkedList_GetFirst((table->buckets)[hash]); curr != NULL; curr = Node_GetNext(curr))
+	{
+		err = Node_CopyKey(curr, &curr_key);
+		if (err != 0) return -1;
+		if (table->hash_compare(key, curr_key) == 0)
+		{
+			tmp = Node_GetData(curr);
+			free(curr_key);
+			return tmp;
+		}
+		free(curr_key);
+	}
+	errno = ENOENT;
+	return NULL;
+}
+
 int
 HashTable_DeleteNode(hashtable_t* table, const void* key)
 {

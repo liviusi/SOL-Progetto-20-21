@@ -144,6 +144,17 @@ Node_CopyData(const node_t* node, void** dataptr)
 	return len;
 }
 
+const void*
+Node_GetData(const node_t* node)
+{
+	if (!node)
+	{
+		errno = EINVAL;
+		return NULL;
+	}
+	return node->data;
+}
+
 int
 Node_ReplaceWithNext(node_t** nodeptr)
 {
