@@ -27,9 +27,8 @@ typedef struct _stored_file
 	int lock_owner; // lock owner's fd; when there is none, it is set to 0.
 	linked_list_t* pending_locks; // list of fds waiting for the lock on this file to be released.
 	linked_list_t* called_open; // list of fds which called open on this file
-	/**
-	 * whoever called open on this file with O_CREATE and O_LOCK may call write on this file
-	*/
+
+	// whoever called open on this file with O_CREATE and O_LOCK may call write on this file
 	int potential_writer; // will be set to 0 if there is none
 	/**
 	 * to allow for simultaneous reading operations while no writing operation
@@ -206,6 +205,7 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 	stored_file_t* file;
 	char str_client[BUFFERLEN];
 	int len = snprintf(str_client, BUFFERLEN, "%d", client);
+
 	RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(storage->mutex)));
 	// it already exists and flag contains O_CREATE
 	if ((exists = HashTable_Find(storage->files, (void*) pathname)) == IS_O_CREATE_SET(flags))
@@ -228,7 +228,8 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 			if (!file) goto fatal;
 			if (IS_O_LOCK_SET(flags)) file->lock_owner = client;
 			if (IS_O_LOCK_SET(flags) && IS_O_CREATE_SET(flags)) file->potential_writer = client;
-			LinkedList_PushFront(file->called_open, str_client, len+1, NULL, 0);
+			err = LinkedList_PushFront(file->called_open, str_client, len+1, NULL, 0);
+			if (err == -1 && errno == ENOMEM) goto fatal;
 			err = HashTable_Insert(storage->files, (void*) pathname,
 						strlen(pathname) + 1, (void*) file, sizeof(*file));
 			if (err == -1 && errno == ENOMEM) goto fatal;
@@ -241,11 +242,29 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 	}
 	else // file is already inside the storage
 	{
+		// forcing it not to be const as it needs to be edited
 		file = (stored_file_t*) HashTable_GetPointerToData(storage->files, (void*) pathname);
-		if (err == -1 && errno == ENOMEM) goto fatal;
-		// TODO: actually edit file
+
+		// file needs to be edited in read/write mode
+		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->reading)));
+		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->writing)));
+
+		if (IS_O_LOCK_SET(flags))
+		{
+			if (file->lock_owner != client) file->lock_owner = client;
+			else
+			{
+				errno = EACCES;
+				return OP_FAILURE;
+			}
+		}
+		LinkedList_PushFront(file->called_open, str_client, len+1, NULL, 0);
+
+		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->reading)));
+		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->writing)));
 	}
 
+	RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
 	return OP_SUCCESS;
 
 	fatal:
