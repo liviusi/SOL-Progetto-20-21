@@ -72,7 +72,7 @@ HashTable_Find(const hashtable_t*, const void*);
  * (it sets errno to) ENOMEM if and only if needed memory allocation fails.
 */
 size_t
-HashTable_GetData(const hashtable_t*, const void*, void**);
+HashTable_CopyOutData(const hashtable_t*, const void*, void**);
 
 /**
  * @brief Deletes node corresponding to given key from hash table.

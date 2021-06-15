@@ -141,7 +141,7 @@ HashTable_Find(const hashtable_t* table, const void* key)
 }
 
 size_t
-HashTable_GetData(const hashtable_t* table, const void* key, void** data)
+HashTable_CopyOutData(const hashtable_t* table, const void* key, void** data)
 {
 	if (!table || !key)
 	{
