@@ -83,6 +83,14 @@ int
 LinkedList_Fold(linked_list_t*, const node_t*);
 
 /**
+ * @brief Checks whether list is empty.
+ * @returns 1 if it is empty, 0 if it is not, -1 on failure.
+ * @exception It sets errno to EINVAL if and only if list is NULL.
+*/
+int
+LinkedList_IsEmpty(const linked_list_t*);
+
+/**
  * Frees allocated resources.
 */
 void

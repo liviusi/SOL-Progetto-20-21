@@ -200,6 +200,18 @@ LinkedList_Fold(linked_list_t* list, const node_t* node)
 	return 0; // node does not appear in list
 }
 
+int
+LinkedList_IsEmpty(const linked_list_t* list)
+{
+	if (!list)
+	{
+		errno = EINVAL;
+		return -1;
+	}
+	if (list->first == list->last && list->first == NULL) return 1;
+	else return 0;
+}
+
 void
 LinkedList_Print(const linked_list_t* list)
 {
