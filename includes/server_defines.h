@@ -15,6 +15,8 @@
 #define IS_O_LOCK_SET(mask) ((mask >> 1) & 1)
 
 #define OP_SUCCESS 0
+#define OP_FAILURE 1
+#define OP_FATAL -1
 
 typedef enum opcodes
 {
