@@ -1,5 +1,5 @@
 /**
- * @brief Source fille for server_interface header.
+ * @brief Source file for server_interface header.
  * @author Giacomo Trapani.
 */
 
@@ -22,10 +22,9 @@
 #define MAXPATH 108
 #define BUFFERLEN 256
 
-#define HANDLE_ANSWER(buffer, bufferlen, operation, argument) \
+#define HANDLE_ANSWER(buffer, bufferlen, argument, answer) \
 	if (readn((long) socket_fd, (void*) buffer, bufferlen) == -1) \
 		return -1; \
-	long answer; \
 	if (isNumber(buffer, &answer) != 0) \
 	{ \
 		errno = EINVAL; \
@@ -132,7 +131,8 @@ openFile(const char* pathname, int flags)
 	if (writen((long) socket_fd, (void*) buffer, len) == -1) return -1;
 
 	memset(buffer, 0, BUFFERLEN);
-	HANDLE_ANSWER(buffer, BUFFERLEN, OPEN, pathname);
+	long answer;
+	HANDLE_ANSWER(buffer, BUFFERLEN, pathname, answer);
 
 	return 0;
 }
@@ -165,7 +165,8 @@ closeFile(const char* pathname)
 	if (writen((long) socket_fd, (void*) buffer, len) == -1) return -1;
 
 	memset(buffer, 0, BUFFERLEN);
-	HANDLE_ANSWER(buffer, BUFFERLEN, CLOSE, pathname);
+	long answer;
+	HANDLE_ANSWER(buffer, BUFFERLEN, pathname, answer);
 
 	return 0;
 }

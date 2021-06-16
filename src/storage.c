@@ -15,6 +15,11 @@
 #include <storage.h>
 
 #define BUFFERLEN 256
+#define DEBUG
+
+#ifdef DEBUG
+#include <linked_list.h>
+#endif
 
 typedef struct _stored_file
 {
@@ -98,8 +103,8 @@ StoredFile_Init(const char* name, const void* contents, size_t contents_size)
 	tmp_called_open = LinkedList_Init();
 	CHECK_MALLOC_FAILURE(tmp_called_open);
 
-	strncpy(tmp_name, name, strlen(name));
-	memset(tmp_contents, contents, contents_size);
+	strncpy(tmp_name, name, strlen(name) + 1);
+	memcpy(tmp_contents, contents, contents_size);
 	tmp->name = tmp_name;
 	tmp->contents = tmp_contents;
 	tmp->contents_size = contents_size;
@@ -171,8 +176,10 @@ Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t ch
 	tmp->mutex = tmp_mutex;
 	tmp->max_files_no = max_files_no;
 	tmp->max_storage_size = max_storage_size;
-	tmp->max_storage_size = 0;
+	tmp->storage_size = 0;
 	tmp->files_no = 0;
+
+	return tmp;
 
 	no_more_memory:
 		pthread_mutex_destroy(&tmp_mutex); // it cannot fail
@@ -184,13 +191,81 @@ Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t ch
 }
 
 void
+StoredFile_Print(const stored_file_t* file)
+{
+	printf("\t\tFilename : %s\n", file->name);
+	printf("\t\tSize : %lu\n", file->contents_size);
+	char* contents = NULL;
+	char* tmp;
+	const node_t* curr = NULL;
+	if (file->contents)
+	{
+		contents = (char*) malloc(sizeof(char) * (file->contents_size+1));
+		if (!contents)
+		{
+			printf("\nFATAL ERROR OCCURRED WHILE PRINTING FILE\n");
+			errno = ENOMEM;
+			exit(errno);
+		}
+		memcpy(contents, file->contents, file->contents_size);
+		contents[file->contents_size] = '\0';
+		printf("\t\tContents : \n%s\n", contents);
+	}
+	else printf("\t\tContents: NULL\n");
+	if (file->called_open)
+	{
+		printf("\t\tCalled open: ");
+		for (curr = LinkedList_GetFirst(file->called_open); curr != NULL; curr = Node_GetNext(curr))
+		{
+			Node_CopyKey(curr, &tmp);
+			printf("%s -> ", tmp);
+		}
+		printf("NULL");
+	}
+	else printf("\t\tCalled open: NULL\n");
+	free(contents);
+}
+
+#ifdef DEBUG
+void
+Storage_Print(const storage_t* storage)
+{
+	printf("STORAGE DETAILS\n");
+	printf("\tCurrent files : %lu, Maximum : %lu\n",
+			storage->files_no, storage->max_files_no);
+	printf("\tCurrent size : %lu, Maximum : %lu\n",
+			storage->storage_size, storage->max_storage_size);
+	const node_t* curr;
+	const stored_file_t* tmp;
+	for (size_t i = 0; i < storage->max_files_no; i++)
+	{
+		printf("\tBucket no. %lu\n", i);
+		curr = LinkedList_GetFirst((storage->files)->buckets[i]);
+		if (!curr) printf("\t\tEMPTY\n");
+		for (; curr != NULL; curr = Node_GetNext(curr))
+		{
+			tmp = (const stored_file_t*) Node_GetData(curr);
+			StoredFile_Print(tmp);
+		}
+		printf("\n");
+	}
+	return;
+}
+
+#else
+void
+Storage_Print(const storage_t* storage)
+{
+	return;
+}
+
+#endif
+
+void
 Storage_Free(storage_t* storage)
 {
 	if (!storage) return;
-	HashTable_Free(storage->files);
-	LinkedList_Free(storage->sorted_files);
-	pthread_mutex_destroy(&(storage->mutex));
-	free(storage);
+	return; // TODO: free allocated resources
 }
 
 int
@@ -208,7 +283,7 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 
 	RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(storage->mutex)));
 	// it already exists and flag contains O_CREATE
-	if ((exists = HashTable_Find(storage->files, (void*) pathname)) == IS_O_CREATE_SET(flags))
+	if ((exists = HashTable_Find(storage->files, (void*) pathname)) == (IS_O_CREATE_SET(flags)))
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
 		errno = EPERM;
@@ -258,7 +333,22 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 				return OP_FAILURE;
 			}
 		}
-		LinkedList_PushFront(file->called_open, str_client, len+1, NULL, 0);
+		// the same client cannot open a file it already opened
+		err = LinkedList_Contains(file->called_open, str_client);
+		if (err == -1) // ENOMEM
+		{
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->reading)));
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->writing)));
+			goto fatal;
+		}
+		else if (err == 1) // client has already opened this file
+		{
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->reading)));
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->writing)));
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
+			return OP_FAILURE;
+		}
+		else LinkedList_PushFront(file->called_open, str_client, len+1, NULL, 0);
 
 		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->reading)));
 		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->writing)));
