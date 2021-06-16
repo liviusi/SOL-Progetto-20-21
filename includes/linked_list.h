@@ -91,15 +91,23 @@ int
 LinkedList_IsEmpty(const linked_list_t*);
 
 /**
- * Frees allocated resources.
+ * @brief Checks whether list contains given key.
+ * @returns 1 if it contains the key, 0 if it does not, -1 on failure.
+ * @exception It sets errno to ENOMEM if and only if needed memory allocation fails.
 */
-void
-LinkedList_Free(linked_list_t*);
+int
+LinkedList_Contains(const linked_list_t*, const char*);
 
 /**
  * Utility print function.
 */
 void
 LinkedList_Print(const linked_list_t* list);
+
+/**
+ * Frees allocated resources.
+*/
+void
+LinkedList_Free(linked_list_t*);
 
 #endif

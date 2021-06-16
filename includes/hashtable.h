@@ -16,6 +16,17 @@
 */
 #define HASHTABLE_INITIALIZER(buckets_no) HashTable_Init(buckets_no, NULL, NULL);
 
+#define DEBUG
+#ifdef DEBUG
+struct _hashtable
+{
+	size_t buckets_no;
+	linked_list_t** buckets; 
+	size_t (*hash_function) (const void*);
+	int (*hash_compare) (const void*, const void*);
+};
+#endif
+
 // Struct fields are not exposed to maintain invariant.
 typedef struct _hashtable hashtable_t;
 

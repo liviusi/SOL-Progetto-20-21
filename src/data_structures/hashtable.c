@@ -11,6 +11,7 @@
 #include <hashtable.h>
 #include <linked_list.h>
 
+#ifndef DEBUG
 struct _hashtable
 {
 	size_t buckets_no;
@@ -18,6 +19,7 @@ struct _hashtable
 	size_t (*hash_function) (const void*);
 	int (*hash_compare) (const void*, const void*);
 };
+#endif
 
 size_t
 HashTable_HashFunction(const void* buffer)
@@ -185,7 +187,7 @@ HashTable_GetPointerToData(const hashtable_t* table, const void* key)
 	for (curr = LinkedList_GetFirst((table->buckets)[hash]); curr != NULL; curr = Node_GetNext(curr))
 	{
 		err = Node_CopyKey(curr, &curr_key);
-		if (err != 0) return -1;
+		if (err != 0) return NULL;
 		if (table->hash_compare(key, curr_key) == 0)
 		{
 			tmp = Node_GetData(curr);

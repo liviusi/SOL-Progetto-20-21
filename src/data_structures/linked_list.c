@@ -212,6 +212,31 @@ LinkedList_IsEmpty(const linked_list_t* list)
 	else return 0;
 }
 
+int
+LinkedList_Contains(const linked_list_t* list, const char* key)
+{
+	const node_t* curr;
+	char* tmp;
+	int err;
+	if (!list || !key) return 0;
+	else
+	{
+
+		for (curr = list->first; curr != NULL; curr = Node_GetNext(curr))
+		{
+			err = Node_CopyKey(curr, &tmp);
+			if (err != 0) return -1;
+			if (strcmp(tmp, key) != 0) free(tmp);
+			else
+			{
+				free(tmp);
+				return 1;
+			}
+		}
+		return 0;
+	}
+}
+
 void
 LinkedList_Print(const linked_list_t* list)
 {
