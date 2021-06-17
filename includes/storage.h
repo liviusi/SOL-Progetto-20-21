@@ -26,4 +26,7 @@ Storage_Free(storage_t*);
 int
 Storage_openFile(storage_t*, const char*, int, int);
 
+int
+Storage_closeFile(storage_t*, const char*, int);
+
 #endif

@@ -1,5 +1,6 @@
 /**
- * @brief Source file for storage header.
+ * @brief Source file for storage header. 
+ * IT IS TO BE REDONE FROM SCRATCH.
  * @author Giacomo Trapani.
 */
 
@@ -41,8 +42,8 @@ typedef struct _stored_file
 	 * the only lock to be held is the reading one, while a writing operation
 	 * such as writeFile, appendToFile, etc both are needed.
 	*/
-	pthread_mutex_t writing; // lock used to ensure atomic writing operations
-	pthread_mutex_t reading; // lock used to ensure atomic reading operations
+	pthread_mutex_t writing; // lock used to ensure at most one writer at a time
+	pthread_mutex_t reading; // lock used to allow for multiple readers
 	pthread_cond_t cond;
 	bool flag; // toggled on when it is being written
 	unsigned int readers_num;
@@ -70,9 +71,6 @@ StoredFile_Init(const char* name, const void* contents, size_t contents_size)
 		if (writing_initialized) pthread_mutex_destroy(&tmp_writing); \
 		if (reading_initialized) pthread_mutex_destroy(&tmp_reading); \
 		if (cond_initialized) pthread_cond_destroy(&tmp_cond);
-	
-	#define CHECK_MALLOC_FAILURE(var) \
-		if (!var) goto no_more_memory;
 
 	pthread_mutex_t tmp_writing;
 	err = pthread_mutex_init(&tmp_writing, NULL);
@@ -156,7 +154,7 @@ Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t ch
 		errno = EINVAL;
 		return NULL;
 	}
-	storage_t* tmp;
+	storage_t* tmp = NULL;
 	linked_list_t* tmp_sorted_files = NULL;
 	hashtable_t* tmp_files = NULL;
 	pthread_mutex_t tmp_mutex;
@@ -164,11 +162,11 @@ Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t ch
 	err = pthread_mutex_init(&tmp_mutex, NULL);
 	if (err != 0) return NULL;
 	tmp = (storage_t*) malloc(sizeof(storage_t));
-	if (!tmp) goto no_more_memory;
+	CHECK_MALLOC_FAILURE(tmp);
 	tmp_sorted_files = LinkedList_Init();
-	if (!tmp_sorted_files) goto no_more_memory;
+	CHECK_MALLOC_FAILURE(tmp_sorted_files);
 	tmp_files = HashTable_Init(max_files_no, NULL, NULL);
-	if (!tmp_files) goto no_more_memory;
+	CHECK_MALLOC_FAILURE(tmp_files);
 
 	tmp->algorithm = chosen_algo;
 	tmp->files = tmp_files;
@@ -269,9 +267,9 @@ Storage_Free(storage_t* storage)
 }
 
 int
-Storage_openFile(storage_t* storage, const char* pathname, int flags, int client)
+Storage_openFile(storage_t* storage, const char* filename, int flags, int client)
 {
-	if (!storage || !pathname)
+	if (!storage || !filename)
 	{
 		errno = EINVAL;
 		return OP_FAILURE;
@@ -283,7 +281,7 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 
 	RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(storage->mutex)));
 	// it already exists and flag contains O_CREATE
-	if ((exists = HashTable_Find(storage->files, (void*) pathname)) == (IS_O_CREATE_SET(flags)))
+	if ((exists = HashTable_Find(storage->files, (void*) filename)) == (IS_O_CREATE_SET(flags)))
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
 		errno = EPERM;
@@ -299,18 +297,18 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 		else
 		{
 			storage->files_no++;
-			file = StoredFile_Init(pathname, NULL, 0);
+			file = StoredFile_Init(filename, NULL, 0);
 			if (!file) goto fatal;
 			if (IS_O_LOCK_SET(flags)) file->lock_owner = client;
 			if (IS_O_LOCK_SET(flags) && IS_O_CREATE_SET(flags)) file->potential_writer = client;
 			err = LinkedList_PushFront(file->called_open, str_client, len+1, NULL, 0);
 			if (err == -1 && errno == ENOMEM) goto fatal;
-			err = HashTable_Insert(storage->files, (void*) pathname,
-						strlen(pathname) + 1, (void*) file, sizeof(*file));
+			err = HashTable_Insert(storage->files, (void*) filename,
+						strlen(filename) + 1, (void*) file, sizeof(*file));
 			if (err == -1 && errno == ENOMEM) goto fatal;
 			if (storage->algorithm == FIFO)
 			{
-				err = LinkedList_PushFront(storage->sorted_files, pathname, strlen(pathname) + 1, NULL, 0);
+				err = LinkedList_PushFront(storage->sorted_files, filename, strlen(filename) + 1, NULL, 0);
 				if (err == -1 && errno == ENOMEM) goto fatal;
 			}
 		}
@@ -318,7 +316,7 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 	else // file is already inside the storage
 	{
 		// forcing it not to be const as it needs to be edited
-		file = (stored_file_t*) HashTable_GetPointerToData(storage->files, (void*) pathname);
+		file = (stored_file_t*) HashTable_GetPointerToData(storage->files, (void*) filename);
 
 		// file needs to be edited in read/write mode
 		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->reading)));
@@ -360,4 +358,42 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 	fatal:
 		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
 		return OP_FATAL;
+}
+
+int
+Storage_closeFile(storage_t* storage, const char* filename, int client)
+{
+	if (!storage || !filename)
+	{
+		errno = EINVAL;
+		return OP_FAILURE;
+	}
+
+	int err, exists;
+	stored_file_t* file;
+	char str_client[BUFFERLEN];
+	int len = snprintf(str_client, BUFFERLEN, "%d", client);
+	RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(storage->mutex)));
+	exists = HashTable_Find(storage->files, (void*) filename);
+	if (!exists) // file is not inside the storage
+		return OP_FAILURE;
+	else // file is inside the storage
+	{
+		// forcing it not to be const as it needs to be edited
+		file = (stored_file_t*) HashTable_GetPointerToData(storage->files, (void*) filename);
+
+		// file needs to be edited in read/write mode
+		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->reading)));
+		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->writing)));
+
+		while (file->flag || file->readers_num) // there must be no writers and no readers
+		{
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_cond_wait(&(file->cond), &(file->writing)));
+		}
+
+		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->reading)));
+		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->writing)));
+	}
+
+	return OP_SUCCESS;
 }

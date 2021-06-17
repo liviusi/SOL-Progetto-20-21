@@ -21,4 +21,6 @@
 #define EXIT_IF_NEQ(variable, expected_value, function_call) \
 	if ((variable = function_call) != expected_value) exit(EXIT_FAILURE);
 
+#define CHECK_MALLOC_FAILURE(var) if (!var) goto no_more_memory;
+
 #endif
