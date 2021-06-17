@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifndef DEBUG
 struct _node
 {
 	char* key;
@@ -14,10 +15,12 @@ struct _node
 	void* data;
 	struct _node* prev;
 	struct _node* next;
+	void (*free_data) (void*);
 };
+#endif
 
 node_t*
-Node_Create(const char* key, size_t key_size, const void* data, size_t data_size)
+Node_Create(const char* key, size_t key_size, const void* data, size_t data_size, void (*free_data) (void*))
 {
 	node_t* tmp = NULL;
 	char* tmp_key = NULL;
@@ -42,6 +45,8 @@ Node_Create(const char* key, size_t key_size, const void* data, size_t data_size
 	tmp->data_sz = data_size;
 	tmp->next = NULL;
 	tmp->prev = NULL;
+	if (!free_data) tmp->free_data = free;
+	else tmp->free_data = free_data;
 
 	return tmp;
 
@@ -204,28 +209,14 @@ Node_Fold(node_t* node)
 }
 
 void
-Node_FreeKey(node_t* node)
-{
-	if (node) free(node->key);
-	return;
-}
-
-void
-Node_FreeData(node_t* node)
-{
-	if (node) free(node->data);
-	return;
-}
-
-void
 Node_Free(node_t* node)
 {
 	if (node)
 	{
 		if (node->prev) node->prev->next = node->next;
 		if (node->next) node->next->prev = node->prev;
-		Node_FreeKey(node);
-		Node_FreeData(node);
+		free(node->key);
+		node->free_data(node->data);
 		free(node);
 		node = NULL;
 	}

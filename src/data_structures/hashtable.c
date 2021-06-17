@@ -18,9 +18,15 @@ struct _hashtable
 	linked_list_t** buckets; 
 	size_t (*hash_function) (const void*);
 	int (*hash_compare) (const void*, const void*);
+	void (*free_data) (void*);
 };
 #endif
 
+/**
+ * @brief Polynomial rolling hash function.
+ * @param buffer buffer to hash
+ * @return hash value of input buffer
+*/
 size_t
 HashTable_HashFunction(const void* buffer)
 {
@@ -41,6 +47,9 @@ HashTable_HashFunction(const void* buffer)
 	return hash_value;
 }
 
+/**
+ * String comparison.
+*/
 int
 HashTable_Compare(const void* a, const void* b)
 {
@@ -51,7 +60,7 @@ HashTable_Compare(const void* a, const void* b)
 
 hashtable_t*
 HashTable_Init(size_t buckets_no, size_t (*hash_function) (const void*), 
-		int (*hash_compare) (const void*, const void*))
+		int (*hash_compare) (const void*, const void*), void (*free_data) (void*))
 {
 	hashtable_t* table = (hashtable_t*) malloc(sizeof(hashtable_t));
 	if (table == NULL)
@@ -70,7 +79,10 @@ HashTable_Init(size_t buckets_no, size_t (*hash_function) (const void*),
 	size_t i = 0;
 	for (; i < buckets_no; i++)
 	{
-		(table->buckets)[i] = LinkedList_Init();
+		if (!free_data)
+			(table->buckets)[i] = LinkedList_Init(free);
+		else
+			(table->buckets)[i] = LinkedList_Init(free_data);
 		if (!((table->buckets)[i]))
 		{
 			size_t j = 0;
@@ -87,6 +99,7 @@ HashTable_Init(size_t buckets_no, size_t (*hash_function) (const void*),
 	}
 	table->hash_function = ((!hash_function) ? (HashTable_HashFunction) : (hash_function));
 	table->hash_compare = ((!hash_compare) ? (HashTable_Compare) : (hash_compare));
+	table->free_data = ((!free_data) ? (free) : (free_data));
 	return table;
 }
 

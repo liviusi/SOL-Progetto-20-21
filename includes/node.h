@@ -9,14 +9,20 @@
 #include <stdlib.h>
 #include <errno.h>
 
+#ifdef DEBUG
+struct _node
+{
+	char* key;
+	unsigned long data_sz;
+	void* data;
+	struct _node* prev;
+	struct _node* next;
+	void (*free_data) (void*);
+};
+#endif
+
 /**
  * Generic node struct used to save data inside doubly-linked-list data structure.
- * It is composed of:
- * - 1x pointer to the next element;
- * - 1x pointer to the previous element;
- * - 1x C style string (hereinafter referred to as "key");
- * - 1x pointer to generic data ("data");
- * - 1x unsigned long denoting data's size.
 */
 typedef struct _node node_t;
 
@@ -26,7 +32,8 @@ typedef struct _node node_t;
  * @exception Sets errno to ENOMEM if and only if memory allocation fails.
 */
 node_t*
-Node_Create(const char*, size_t, const void*, size_t);
+Node_Create(const char* key, size_t key_size, const void* data,
+		size_t data_size, void (*free_data) (void*));
 
 /**
  * @brief Sets first param's next pointer to the second param.
@@ -34,7 +41,7 @@ Node_Create(const char*, size_t, const void*, size_t);
  * @exception It sets errno to EINVAL if and only if first param is NULL.
 */
 int
-Node_SetNext(node_t*, const node_t*);
+Node_SetNext(node_t* node1, const node_t* node2);
 
 /**
  * @brief Sets first param's previous pointer to the second param.
@@ -42,7 +49,7 @@ Node_SetNext(node_t*, const node_t*);
  * @exception It sets errno to EINVAL if and only if first param is NULL.
 */
 int
-Node_SetPrevious(node_t*, const node_t*);
+Node_SetPrevious(node_t* node1, const node_t* node2);
 
 /**
  * @brief Getter for next node. Check whether errno has been set to EINVAL
@@ -51,7 +58,7 @@ Node_SetPrevious(node_t*, const node_t*);
  * @exception It sets errno to EINVAL if and only if param is NULL.
 */
 const node_t*
-Node_GetNext(const node_t*);
+Node_GetNext(const node_t* node);
 
 /**
  * @brief Getter for previous node. Check whether errno has been set to EINVAL
@@ -60,7 +67,7 @@ Node_GetNext(const node_t*);
  * @exception It sets errno to EINVAL if and only if param is NULL.
 */
 const node_t*
-Node_GetPrevious(const node_t*);
+Node_GetPrevious(const node_t* node);
 
 /**
  * @brief Copy node's key param to non-allocated char buffer.
@@ -69,7 +76,7 @@ Node_GetPrevious(const node_t*);
  * ENOMEM if and only if any memory allocation fails.
 */
 int
-Node_CopyKey(const node_t*, char**);
+Node_CopyKey(const node_t* node, char** keyptr);
 
 /**
  * @brief Copy node's data param to non-allocated char buffer.
@@ -78,7 +85,7 @@ Node_CopyKey(const node_t*, char**);
  * ENOMEM if and only if any memory allocation fails.
 */
 size_t
-Node_CopyData(const node_t*, void**);
+Node_CopyData(const node_t* node, void** dataptr);
 
 /**
  * @brief Gets a pointer to node's data param.
@@ -86,7 +93,7 @@ Node_CopyData(const node_t*, void**);
  * @exception It sets errno to EINVAL if and only if param is NULL. 
 */
 const void*
-Node_GetData(const node_t*);
+Node_GetData(const node_t* node);
 
 /**
  * @brief Replaces node with the node its next field points to. It frees the given node struct.
@@ -94,7 +101,7 @@ Node_GetData(const node_t*);
  * @exception It sets errno to EINVAL if and only if param is NULL.
 */
 int
-Node_ReplaceWithNext(node_t**);
+Node_ReplaceWithNext(node_t** nodeptr);
 
 /**
  * @brief Replaces node with the node its previous field points to. It frees the given node struct.
@@ -102,7 +109,7 @@ Node_ReplaceWithNext(node_t**);
  * @exception It sets errno to EINVAL if and only if param is NULL.
 */
 int
-Node_ReplaceWithPrevious(node_t**);
+Node_ReplaceWithPrevious(node_t** nodeptr);
 
 /**
  * @brief Makes param previous node point to param next node (i.e. param.prev.next = param.next, 
@@ -111,12 +118,12 @@ Node_ReplaceWithPrevious(node_t**);
  * @exception It sets errno to EINVAL if and only if param is NULL.
 */
 int
-Node_Fold(node_t*);
+Node_Fold(node_t* node);
 
 /**
  * Frees allocated resources.
 */
 void
-Node_Free(node_t*);
+Node_Free(node_t* node);
 
 #endif

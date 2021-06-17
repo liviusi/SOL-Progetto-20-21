@@ -8,6 +8,18 @@
 
 #include <stdlib.h>
 
+#ifdef DEBUG
+struct _server_config
+{
+	unsigned long
+		workers_no,
+		max_files_no,
+		storage_size;
+	char socket_path[MAXPATH];
+	char log_path[MAXPATH];
+};
+#endif
+
 // Struct fields are not exposed to forbid user from editing them
 typedef struct _server_config server_config_t;
 
@@ -28,7 +40,7 @@ ServerConfig_Init();
  * refer to fopen for any other errno value.
 */
 int
-ServerConfig_Set(server_config_t*, const char*);
+ServerConfig_Set(server_config_t* config, const char* config_file_path);
 
 /**
  * @brief Getter for number of workers.
@@ -36,7 +48,7 @@ ServerConfig_Set(server_config_t*, const char*);
  * @exception It sets errno to EINVAL if and only if server config is NULL.
 */
 unsigned long
-ServerConfig_GetWorkersNo(const server_config_t*);
+ServerConfig_GetWorkersNo(const server_config_t* config);
 
 /**
  * @brief Getter for maximum number of storable files.
@@ -44,7 +56,7 @@ ServerConfig_GetWorkersNo(const server_config_t*);
  * @exception It sets errno to EINVAL if and only if server config is NULL.
 */
 unsigned long
-ServerConfig_GetMaxFilesNo(const server_config_t*);
+ServerConfig_GetMaxFilesNo(const server_config_t* config);
 
 /**
  * @brief Getter for storage size.
@@ -52,7 +64,7 @@ ServerConfig_GetMaxFilesNo(const server_config_t*);
  * @exception It sets errno to EINVAL if and only if server config is NULL.
 */
 unsigned long
-ServerConfig_GetStorageSize(const server_config_t*);
+ServerConfig_GetStorageSize(const server_config_t* config);
 
 /**
  * @brief Getter for log file path. The second param needs to be a pointer to a non-allocated
@@ -63,7 +75,7 @@ ServerConfig_GetStorageSize(const server_config_t*);
  * is NULL, (it sets errno to) ENOMEM if and only if required memory allocation fails.
 */
 unsigned long
-ServerConfig_GetLogFilePath(const server_config_t*, char**);
+ServerConfig_GetLogFilePath(const server_config_t* config, char** log_path_ptr);
 
 /**
  * @brief Getter for socket file path. The second param needs to be a pointer to a non-allocated
@@ -74,12 +86,12 @@ ServerConfig_GetLogFilePath(const server_config_t*, char**);
  * is NULL, (it sets errno to) ENOMEM if and only if required memory allocation fails.
 */
 unsigned long
-ServerConfig_GetSocketFilePath(const server_config_t*, char**);
+ServerConfig_GetSocketFilePath(const server_config_t* config, char** socket_path_ptr);
 
 /**
  * Frees allocated resources.
 */
 void
-ServerConfig_Free(server_config_t*);
+ServerConfig_Free(server_config_t* config);
 
 #endif

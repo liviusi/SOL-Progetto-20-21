@@ -14,9 +14,8 @@
  * @returns Pointer to initialized table on success, NULL on failure.
  * @exception It sets errno to ENOMEM if and only if needed memory allocation fails.
 */
-#define HASHTABLE_INITIALIZER(buckets_no) HashTable_Init(buckets_no, NULL, NULL);
+#define HASHTABLE_INITIALIZER(buckets_no, free_func) HashTable_Init(buckets_no, NULL, NULL, free_func);
 
-#define DEBUG
 #ifdef DEBUG
 struct _hashtable
 {
@@ -24,25 +23,12 @@ struct _hashtable
 	linked_list_t** buckets; 
 	size_t (*hash_function) (const void*);
 	int (*hash_compare) (const void*, const void*);
+	void (*free_data) (void*);
 };
 #endif
 
 // Struct fields are not exposed to maintain invariant.
 typedef struct _hashtable hashtable_t;
-
-/**
- * @brief Polynomial rolling hash function.
- * @param buffer buffer to hash
- * @return hash value of input buffer
-*/
-size_t
-HashTable_HashFunction(const void*);
-
-/**
- * String comparison.
-*/
-int
-HashTable_Compare(const void*, const void*);
 
 /**
  * @brief Initializes empty hash table struct given number of buckets, 
@@ -56,7 +42,8 @@ HashTable_Compare(const void*, const void*);
  * @exception It sets errno to ENOMEM if and only if needed memory allocation fails.
 */
 hashtable_t*
-HashTable_Init(size_t, size_t (const void*), int (const void*, const void*));
+HashTable_Init(size_t buckets_no, size_t (*hash_function) (const void*), 
+		int (*hash_compare) (const void*, const void*), void (*free_data) (void*));
 
 /**
  * @brief Creates and inserts entry into hashtable. Duplicates are not allowed.
@@ -65,7 +52,8 @@ HashTable_Init(size_t, size_t (const void*), int (const void*, const void*));
  * (it sets errno to) EINVAL if and only if key is NULL or key_size is zero.
 */
 int
-HashTable_Insert(hashtable_t*, const void*, size_t, const void*, size_t);
+HashTable_Insert(hashtable_t* table, const void* key,
+		size_t key_size, const void* data, size_t data_size);
 
 /**
  * @brief Checks whether hash table contains an entry for given key.
@@ -73,7 +61,7 @@ HashTable_Insert(hashtable_t*, const void*, size_t, const void*, size_t);
  * @exception It sets errno to EINVAL if table or entry are NULL.
 */
 int
-HashTable_Find(const hashtable_t*, const void*);
+HashTable_Find(const hashtable_t* table, const void* key);
 
 /**
  * @brief Gets data corresponding to the given key, it will be written inside third param
@@ -83,7 +71,7 @@ HashTable_Find(const hashtable_t*, const void*);
  * (it sets errno to) ENOMEM if and only if needed memory allocation fails.
 */
 size_t
-HashTable_CopyOutData(const hashtable_t*, const void*, void**);
+HashTable_CopyOutData(const hashtable_t* table, const void* key, void** data);
 
 /**
  * @brief Gets pointer to data corresponding to the given key.
@@ -91,7 +79,7 @@ HashTable_CopyOutData(const hashtable_t*, const void*, void**);
  * @exception It sets errno to EINVAL if key or table are NULL.
 */
 const void*
-HashTable_GetPointerToData(const hashtable_t*, const void*);
+HashTable_GetPointerToData(const hashtable_t* table, const void* key);
 
 /**
  * @brief Deletes node corresponding to given key from hash table.
@@ -99,18 +87,18 @@ HashTable_GetPointerToData(const hashtable_t*, const void*);
  * @exception It sets errno to EINVAL if and only if table or entry are NULL.
 */
 int
-HashTable_DeleteNode(hashtable_t*, const void*);
+HashTable_DeleteNode(hashtable_t* table, const void* key);
 
 /**
  * Frees allocated resources.
 */
 void
-HashTable_Free(hashtable_t*);
+HashTable_Free(hashtable_t* table);
 
 /**
  * Utility print function.
 */
 void
-HashTable_Print(const hashtable_t*);
+HashTable_Print(const hashtable_t* table);
 
 #endif
