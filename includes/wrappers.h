@@ -21,6 +21,18 @@
 #define EXIT_IF_NEQ(variable, expected_value, function_call) \
 	if ((variable = function_call) != expected_value) exit(EXIT_FAILURE);
 
-#define CHECK_MALLOC_FAILURE(var) if (!var) goto no_more_memory;
+#define GOTO_ERROR_IF_NEQ(variable, value, errnosave, label) \
+if (variable != value) \
+{ \
+	errnosave = errno; \
+	goto label; \
+}
+
+#define GOTO_ERROR_IF_EQ(variable, value, errnosave, label) \
+if (variable != value) \
+{ \
+	errnosave = errno; \
+	goto label; \
+}
 
 #endif
