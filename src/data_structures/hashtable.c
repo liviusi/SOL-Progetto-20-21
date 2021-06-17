@@ -149,7 +149,10 @@ HashTable_Find(const hashtable_t* table, const void* key)
 		err = Node_CopyKey(curr, &curr_key);
 		if (err != 0) return -1;
 		if (table->hash_compare(key, curr_key) == 0)
+		{
+			free(curr_key);
 			return 1;
+		}
 		free(curr_key);
 	}
 	return 0;
@@ -222,23 +225,7 @@ HashTable_DeleteNode(hashtable_t* table, const void* key)
 		return -1;
 	}
 	size_t hash = table->hash_function((void*) key) % table->buckets_no;
-	const node_t* curr;
-	char* curr_key;
-	int err;
-	for (curr = LinkedList_GetFirst((table->buckets)[hash]); curr != NULL; curr = Node_GetNext(curr))
-	{
-		err = Node_CopyKey(curr, &curr_key);
-		if (err != 0) return -1;
-		if (table->hash_compare(key, curr_key) == 0)
-		{
-			err = LinkedList_Fold((table->buckets)[hash], curr);
-			if (err != 0) return -1;
-			free(curr_key);
-			return 1;
-		}
-		else free(curr_key);
-	}
-	return 0;
+	return LinkedList_Remove((table->buckets)[hash], key);
 }
 
 void
