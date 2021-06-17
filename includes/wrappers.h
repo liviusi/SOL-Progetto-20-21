@@ -21,6 +21,10 @@
 #define EXIT_IF_NEQ(variable, expected_value, function_call) \
 	if ((variable = function_call) != expected_value) exit(EXIT_FAILURE);
 
+/**
+ * @brief Goes to label if variable is not equal to value.
+ * @param errnosave will be used to store errno value
+*/
 #define GOTO_LABEL_IF_NEQ(variable, value, errnosave, label) \
 if (variable != value) \
 { \
@@ -28,6 +32,10 @@ if (variable != value) \
 	goto label; \
 }
 
+/**
+ * @brief Goes to label if variable is equal to value.
+ * @param errnosave will be used to store errno value
+*/
 #define GOTO_LABEL_IF_EQ(variable, value, errnosave, label) \
 if (variable == value) \
 { \
