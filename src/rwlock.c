@@ -28,13 +28,13 @@ RWLock_Init()
 	bool mutex_initialized = false, cond_initialized = false;
 
 	err = pthread_mutex_init(&mutex, NULL);
-	GOTO_ERROR_IF_NEQ(err, 0, errnosave, failure);
+	GOTO_LABEL_IF_NEQ(err, 0, errnosave, failure);
 	mutex_initialized = true;
 	err = pthread_cond_init(&cond, NULL);
-	GOTO_ERROR_IF_NEQ(err, 0, errnosave, failure);
+	GOTO_LABEL_IF_NEQ(err, 0, errnosave, failure);
 	cond_initialized = true;
 	tmp = (rwlock_t*) malloc(sizeof(rwlock_t));
-	GOTO_ERROR_IF_EQ(tmp, NULL, errnosave, failure);
+	GOTO_LABEL_IF_EQ(tmp, NULL, errnosave, failure);
 
 	tmp->cond = cond;
 	tmp->mutex = mutex;
