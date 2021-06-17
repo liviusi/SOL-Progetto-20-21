@@ -9,6 +9,16 @@
 #include <stdlib.h>
 #include <node.h>
 
+#ifdef DEBUG
+struct _linked_list
+{
+	node_t* first;
+	node_t* last;
+	unsigned long nelems;
+	void (*free_data) (void*);
+};
+#endif
+
 // Struct fields are not exposed to maintain invariant.
 typedef struct _linked_list linked_list_t;
 
@@ -17,7 +27,7 @@ typedef struct _linked_list linked_list_t;
  * @returns Initialized data structure on success, NULL on failure.
  * @exception It sets errno to ENOMEM if and only if needed memory allocation fails.
 */
-linked_list_t* LinkedList_Init();
+linked_list_t* LinkedList_Init(void (*free_data) (void*));
 
 /**
  * @brief Getter for first element of linked list.
@@ -74,13 +84,12 @@ int
 LinkedList_PopBack(linked_list_t*, char**, void**);
 
 /**
- * @brief Folds list over first occurrence of given node (tl;dr it works the same
- * way as Node_Fold). It frees node in list.
- * @returns 0 on success, -1 on failure.
+ * @brief Removes first node with given key from list.
+ * @returns 0 on successful deletion, 1 if such element does not exists, -1 on failure.
  * @exception It sets errno to EINVAL if and only if list or node are NULL.
 */
 int
-LinkedList_Fold(linked_list_t*, const node_t*);
+LinkedList_Remove(linked_list_t*, const char*);
 
 /**
  * @brief Checks whether list is empty.

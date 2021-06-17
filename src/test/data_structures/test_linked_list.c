@@ -35,7 +35,7 @@ int main()
 	char node9_tmp_data[] = "[DATA] 9";
 	char node10_tmp_data[] = "[DATA] 10";
 
-	linked_list_t* list = LinkedList_Init();
+	linked_list_t* list = LinkedList_Init(NULL);
 	strncpy(key, node1_tmp_key, 128);
 	strncpy(data, node1_tmp_data, 128);
 	LinkedList_PushBack(list, key, strlen(key) + 1, (void*) data, strlen(data) + 1);
@@ -74,15 +74,10 @@ int main()
 	LinkedList_Print(list);
 	free(key);
 	free(data);
-	key = (char*) malloc(sizeof(char) * 128);
-	data = (char*) malloc(sizeof(char) * 128);
-	strncpy(key, node8_tmp_key, 128);
-	strncpy(data, node8_tmp_data, 128);
-	node_t* tmp = Node_Create(key, strlen(key)+1, (void*) data, strlen(data)+1);
-	LinkedList_Fold(list, tmp);
-	Node_Free(tmp);
-	free(key);
-	free(data);
+	LinkedList_Remove(list, node8_tmp_key);
+	LinkedList_Remove(list, node8_tmp_key);
+	LinkedList_Remove(list, node7_tmp_key);
+	LinkedList_Remove(list, node3_tmp_key);
 	LinkedList_PopBack(list, &key, (void**) &data);
 	fprintf(stderr, "KEY : %s\tDATA : %s\n", key, data);
 	free(key);
@@ -96,7 +91,7 @@ int main()
 
 	key = (char*) malloc(sizeof(char) * 128);
 	data = (char*) malloc(sizeof(char) * 128);
-	linked_list_t* tmp_list = LinkedList_Init();
+	linked_list_t* tmp_list = LinkedList_Init(NULL);
 	strncpy(key, node1_tmp_key, 128);
 	strncpy(data, node1_tmp_data, 128);
 	LinkedList_PushBack(tmp_list, key, strlen(key) + 1, (void*) data, strlen(data) + 1);

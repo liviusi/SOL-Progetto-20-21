@@ -33,7 +33,7 @@ int main()
 	char node8_tmp_data[] = "[DATA] 8";
 	char node9_tmp_data[] = "[DATA] 9";
 	char node10_tmp_data[] = "[DATA] 10";
-	hashtable_t* table = HASHTABLE_INITIALIZER(5);
+	hashtable_t* table = HASHTABLE_INITIALIZER(5, NULL);
 	strncpy(key, node1_tmp_key, 128);
 	strncpy(data, node1_tmp_data, 128);
 	HashTable_Insert(table, key, strlen(key) + 1, (void*) data, strlen(data) + 1);

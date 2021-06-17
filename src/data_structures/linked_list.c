@@ -10,15 +10,18 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#ifndef DEBUG
 struct _linked_list
 {
 	node_t* first;
 	node_t* last;
 	unsigned long nelems;
+	void (*free_data) (void*);
 };
+#endif
 
 linked_list_t*
-LinkedList_Init()
+LinkedList_Init(void (*free_data) (void*))
 {
 	linked_list_t* tmp = (linked_list_t*) malloc(sizeof(linked_list_t));
 	if (!tmp) goto no_more_memory;
@@ -26,6 +29,8 @@ LinkedList_Init()
 	tmp->first = NULL;
 	tmp->last = NULL;
 	tmp->nelems = 0;
+	if (!free_data) tmp->free_data = free;
+	else tmp->free_data = free_data;
 
 	return tmp;
 
@@ -57,7 +62,7 @@ LinkedList_PushFront(linked_list_t* list, const char* key,
 	}
 
 	node_t* tmp;
-	if ((tmp = Node_Create(key, key_size, data, data_size)) == NULL)
+	if ((tmp = Node_Create(key, key_size, data, data_size, list->free_data)) == NULL)
 		return -1;
 
 	if (list->first == NULL) // list is empty if and only if the first elem is NULL
@@ -87,7 +92,7 @@ LinkedList_PushBack(linked_list_t* list, const char* key,
 	}
 
 	node_t* tmp;
-	if ((tmp = Node_Create(key, key_size, data, data_size)) == NULL)
+	if ((tmp = Node_Create(key, key_size, data, data_size, list->free_data)) == NULL)
 		return -1;
 	
 	if (list->first == NULL) // list is empty if and only if first elem is NULL
@@ -175,29 +180,35 @@ LinkedList_PopBack(linked_list_t* list, char** key, void** data)
 }
 
 int
-LinkedList_Fold(linked_list_t* list, const node_t* node)
+LinkedList_Remove(linked_list_t* list, const char* key)
 {
-	if (!node || !list)
+	if (!list || !key)
 	{
 		errno = EINVAL;
 		return -1;
 	}
-	const node_t* curr = list->first;
+	node_t* curr = list->first;
+	char* tmp;
+	int err;
 	while (curr != NULL)
 	{
-		if (curr != node)
-			curr = Node_GetNext(curr);
+		err = Node_CopyKey(curr, &tmp);
+		if (err == -1) return -1;
+		if (strcmp(key, tmp) != 0)
+		{
+			free(tmp);
+			curr = (node_t*) Node_GetNext(curr);
+		}
 		else
 		{
-			if (Node_GetPrevious(node))
-			{
-				if (curr != list->last) return Node_Fold((node_t*) node);
-				else return LinkedList_PopBack(list, NULL, NULL);
-			}
-			else return LinkedList_PopFront(list, NULL, NULL);
+			if (!Node_GetNext(curr)) list->last = (node_t*) Node_GetPrevious(curr);
+			if (!Node_GetPrevious(curr)) list->first = (node_t*) Node_GetNext(curr);
+			Node_Free(curr);
+			free(tmp);
+			return 0;
 		}
 	}
-	return 0; // node does not appear in list
+	return 1;
 }
 
 int
