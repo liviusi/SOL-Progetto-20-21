@@ -9,11 +9,14 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <pthread.h>
+
+#include <rwlock.h>
+#include <storage.h>
+#include <hashtable.h>
+#include <linked_list.h>
 #include <server_defines.h>
 #include <wrappers.h>
-#include <linked_list.h>
-#include <hashtable.h>
-#include <storage.h>
+
 
 #define BUFFERLEN 256
 #define DEBUG
@@ -29,24 +32,12 @@ typedef struct _stored_file
 	void* contents;
 	size_t contents_size;
 
-	// metadata to avoid race conditions
 	int lock_owner; // lock owner's fd; when there is none, it is set to 0.
-	linked_list_t* pending_locks; // list of fds waiting for the lock on this file to be released.
 	linked_list_t* called_open; // list of fds which called open on this file
 
 	// whoever called open on this file with O_CREATE and O_LOCK may call write on this file
 	int potential_writer; // will be set to 0 if there is none
-	/**
-	 * to allow for simultaneous reading operations while no writing operation
-	 * is going on two mutexes are needed; if a reading operation is going on
-	 * the only lock to be held is the reading one, while a writing operation
-	 * such as writeFile, appendToFile, etc both are needed.
-	*/
-	pthread_mutex_t writing; // lock used to ensure at most one writer at a time
-	pthread_mutex_t reading; // lock used to allow for multiple readers
-	pthread_cond_t cond;
-	bool flag; // toggled on when it is being written
-	unsigned int readers_num;
+	rwlock_t* lock;
 
 } stored_file_t;
 
@@ -58,48 +49,26 @@ StoredFile_Init(const char* name, const void* contents, size_t contents_size)
 		errno = EINVAL;
 		return NULL;
 	}
-
 	stored_file_t* tmp = NULL;
 	char* tmp_name = NULL;
 	void* tmp_contents = NULL;
-	linked_list_t* tmp_pending_locks = NULL;
 	linked_list_t* tmp_called_open = NULL;
-	bool writing_initialized = false, reading_initialized = false, cond_initialized = false;
+	rwlock_t* tmp_lock = NULL;
 	int err;
 
-	#define DEALLOCATE_MUTEX_AND_COND \
-		if (writing_initialized) pthread_mutex_destroy(&tmp_writing); \
-		if (reading_initialized) pthread_mutex_destroy(&tmp_reading); \
-		if (cond_initialized) pthread_cond_destroy(&tmp_cond);
-
-	pthread_mutex_t tmp_writing;
-	err = pthread_mutex_init(&tmp_writing, NULL);
-	if (err != 0) goto mutex_cond_failure;
-	else writing_initialized = true;
-	
-	pthread_mutex_t tmp_reading;
-	err = pthread_mutex_init(&tmp_reading, NULL);
-	if (err != 0) goto mutex_cond_failure;
-	else reading_initialized = true;
-	
-	pthread_cond_t tmp_cond;
-	err = pthread_cond_init(&tmp_cond, NULL);
-	if (err != 0) goto mutex_cond_failure;
-	else cond_initialized = true;
-
 	tmp = (stored_file_t*) malloc(sizeof(stored_file_t));
-	CHECK_MALLOC_FAILURE(tmp);
+	GOTO_LABEL_IF_EQ(tmp, NULL, err, init_failure);
 	tmp_name = (char*) malloc(strlen(name) + 1);
-	CHECK_MALLOC_FAILURE(tmp_name);
+	GOTO_LABEL_IF_EQ(tmp_name, NULL, err, init_failure);
 	if (contents_size != 0)
 	{
 		tmp_contents = (void*) malloc(contents_size);
-		CHECK_MALLOC_FAILURE(tmp_contents);
+		GOTO_LABEL_IF_EQ(tmp_contents, NULL, err, init_failure);
 	}
-	tmp_pending_locks = LinkedList_Init();
-	CHECK_MALLOC_FAILURE(tmp_pending_locks);
-	tmp_called_open = LinkedList_Init();
-	CHECK_MALLOC_FAILURE(tmp_called_open);
+	tmp_called_open = LinkedList_Init(free);
+	GOTO_LABEL_IF_EQ(tmp_called_open, NULL, err, init_failure);
+	tmp_lock = RWLock_Init();
+	GOTO_LABEL_IF_EQ(tmp_lock, NULL, err, init_failure);
 
 	strncpy(tmp_name, name, strlen(name) + 1);
 	memcpy(tmp_contents, contents, contents_size);
@@ -107,31 +76,34 @@ StoredFile_Init(const char* name, const void* contents, size_t contents_size)
 	tmp->contents = tmp_contents;
 	tmp->contents_size = contents_size;
 	tmp->lock_owner = 0;
-	tmp->pending_locks = tmp_pending_locks;
 	tmp->called_open = tmp_called_open;
 	tmp->potential_writer = 0;
-	tmp->writing = tmp_writing;
-	tmp->reading = tmp_reading;
-	tmp->flag = false;
-	tmp->readers_num = 0;
+	tmp->lock = tmp_lock;
 
 	return tmp;
 
-	mutex_cond_failure:
-		DEALLOCATE_MUTEX_AND_COND;
-		return NULL;
-	
-	no_more_memory:
+	init_failure:
 		free(tmp_name);
 		free(tmp_contents);
-		LinkedList_Free(tmp_pending_locks);
 		LinkedList_Free(tmp_called_open);
+		RWLock_Free(tmp_lock);
 		free(tmp);
-		DEALLOCATE_MUTEX_AND_COND;
-		errno = ENOMEM;
+		errno = err;
 		return NULL;
 }
 
+void
+StoredFile_Free(void* arg)
+{
+	stored_file_t* file = (stored_file_t*) arg;
+	RWLock_Free(file->lock);
+	LinkedList_Free(file->called_open);
+	free(file->name);
+	free(file->contents);
+	free(file);
+}
+
+#ifndef DEBUG
 struct _storage
 {
 	hashtable_t* files;
@@ -145,6 +117,7 @@ struct _storage
 
 	pthread_mutex_t mutex;
 };
+#endif
 
 storage_t*
 Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t chosen_algo)
@@ -162,11 +135,11 @@ Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t ch
 	err = pthread_mutex_init(&tmp_mutex, NULL);
 	if (err != 0) return NULL;
 	tmp = (storage_t*) malloc(sizeof(storage_t));
-	CHECK_MALLOC_FAILURE(tmp);
-	tmp_sorted_files = LinkedList_Init();
-	CHECK_MALLOC_FAILURE(tmp_sorted_files);
-	tmp_files = HashTable_Init(max_files_no, NULL, NULL);
-	CHECK_MALLOC_FAILURE(tmp_files);
+	GOTO_LABEL_IF_EQ(tmp, NULL, err, init_failure);
+	tmp_sorted_files = LinkedList_Init(free);
+	GOTO_LABEL_IF_EQ(tmp_sorted_files, NULL, err, init_failure);
+	tmp_files = HashTable_Init(max_files_no, NULL, NULL, StoredFile_Free);
+	GOTO_LABEL_IF_EQ(tmp_files, NULL, err, init_failure);
 
 	tmp->algorithm = chosen_algo;
 	tmp->files = tmp_files;
@@ -179,12 +152,12 @@ Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t ch
 
 	return tmp;
 
-	no_more_memory:
+	init_failure:
 		pthread_mutex_destroy(&tmp_mutex); // it cannot fail
 		LinkedList_Free(tmp_sorted_files);
 		HashTable_Free(tmp_files);
 		free(tmp);
-		errno = ENOMEM;
+		errno = err;
 		return NULL;
 }
 
@@ -217,6 +190,7 @@ StoredFile_Print(const stored_file_t* file)
 		{
 			Node_CopyKey(curr, &tmp);
 			printf("%s -> ", tmp);
+			free(tmp);
 		}
 		printf("NULL");
 	}
@@ -263,7 +237,10 @@ void
 Storage_Free(storage_t* storage)
 {
 	if (!storage) return;
-	return; // TODO: free allocated resources
+	pthread_mutex_destroy(&(storage->mutex));
+	LinkedList_Free(storage->sorted_files);
+	HashTable_Free(storage->files);
+	free(storage);
 }
 
 int
@@ -274,7 +251,7 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 		errno = EINVAL;
 		return OP_FAILURE;
 	}
-	int err, exists;
+	int err, exists, errnosave;
 	stored_file_t* file;
 	char str_client[BUFFERLEN];
 	int len = snprintf(str_client, BUFFERLEN, "%d", client);
@@ -298,19 +275,22 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 		{
 			storage->files_no++;
 			file = StoredFile_Init(filename, NULL, 0);
-			if (!file) goto fatal;
+			GOTO_LABEL_IF_EQ(file, NULL, errnosave, fatal);
 			if (IS_O_LOCK_SET(flags)) file->lock_owner = client;
 			if (IS_O_LOCK_SET(flags) && IS_O_CREATE_SET(flags)) file->potential_writer = client;
 			err = LinkedList_PushFront(file->called_open, str_client, len+1, NULL, 0);
-			if (err == -1 && errno == ENOMEM) goto fatal;
+			GOTO_LABEL_IF_EQ(err, -1, errnosave, fatal);
 			err = HashTable_Insert(storage->files, (void*) filename,
 						strlen(filename) + 1, (void*) file, sizeof(*file));
-			if (err == -1 && errno == ENOMEM) goto fatal;
+			GOTO_LABEL_IF_EQ(err, -1, errnosave, fatal);
 			if (storage->algorithm == FIFO)
 			{
 				err = LinkedList_PushFront(storage->sorted_files, filename, strlen(filename) + 1, NULL, 0);
-				if (err == -1 && errno == ENOMEM) goto fatal;
+				GOTO_LABEL_IF_EQ(err, -1, errnosave, fatal);
 			}
+			// file has been copied inside storage
+			// it is to be freed
+			free(file);
 		}
 	}
 	else // file is already inside the storage
@@ -318,9 +298,8 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 		// forcing it not to be const as it needs to be edited
 		file = (stored_file_t*) HashTable_GetPointerToData(storage->files, (void*) filename);
 
-		// file needs to be edited in read/write mode
-		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->reading)));
-		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->writing)));
+		// file needs to be edited in write mode
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->lock));
 
 		if (IS_O_LOCK_SET(flags))
 		{
@@ -335,21 +314,18 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 		err = LinkedList_Contains(file->called_open, str_client);
 		if (err == -1) // ENOMEM
 		{
-			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->reading)));
-			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->writing)));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
 			goto fatal;
 		}
 		else if (err == 1) // client has already opened this file
 		{
-			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->reading)));
-			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->writing)));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
 			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
 			return OP_FAILURE;
 		}
 		else LinkedList_PushFront(file->called_open, str_client, len+1, NULL, 0);
 
-		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->reading)));
-		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->writing)));
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
 	}
 
 	RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
@@ -357,6 +333,7 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 
 	fatal:
 		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
+		errno = errnosave;
 		return OP_FATAL;
 }
 
@@ -369,10 +346,10 @@ Storage_closeFile(storage_t* storage, const char* filename, int client)
 		return OP_FAILURE;
 	}
 
-	int err, exists;
+	int err, exists, errnosave;
 	stored_file_t* file;
 	char str_client[BUFFERLEN];
-	int len = snprintf(str_client, BUFFERLEN, "%d", client);
+	snprintf(str_client, BUFFERLEN, "%d", client);
 	RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(storage->mutex)));
 	exists = HashTable_Find(storage->files, (void*) filename);
 	if (!exists) // file is not inside the storage
@@ -382,18 +359,34 @@ Storage_closeFile(storage_t* storage, const char* filename, int client)
 		// forcing it not to be const as it needs to be edited
 		file = (stored_file_t*) HashTable_GetPointerToData(storage->files, (void*) filename);
 
-		// file needs to be edited in read/write mode
-		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->reading)));
-		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->writing)));
+		// file needs to be edited in write mode
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->lock));
 
-		while (file->flag || file->readers_num) // there must be no writers and no readers
+		// checking whether client has opened the file
+		err = LinkedList_Contains(file->called_open, str_client);
+		GOTO_LABEL_IF_EQ(err, -1, errnosave, fatal);
+		if (err == 0) // file has not been opened by client
 		{
-			RETURN_FATAL_IF_NEQ(err, 0, pthread_cond_wait(&(file->cond), &(file->writing)));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock((file->lock)));
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
+			return OP_FAILURE;
+		}
+		else // file has been opened: now closing it
+		{
+			LinkedList_Remove(file->called_open, str_client);
 		}
 
-		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->reading)));
-		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->writing)));
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
 	}
 
+	RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
+
 	return OP_SUCCESS;
+
+	fatal:
+		errnosave = errno;
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock((file->lock)));
+		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
+		errno = errnosave;
+		return OP_FATAL;
 }

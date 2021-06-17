@@ -11,7 +11,6 @@ int main(int argc, char* argv[])
 	size_t files, size;
 	files = (size_t) ServerConfig_GetMaxFilesNo(config);
 	size = (size_t) ServerConfig_GetStorageSize(config);
-	printf("files : %lu\nsize : %lu\n", files, size);
 	storage_t* storage = Storage_Init(files, size, FIFO);
 	int err;
 	err = Storage_openFile(storage, "/home/liviusi/file1", O_CREATE, 1);
@@ -35,5 +34,18 @@ int main(int argc, char* argv[])
 	err = Storage_openFile(storage, "/home/liviusi/file8", 0, 1);
 	assert(err == 1);
 	Storage_Print(storage);
+
+	err = Storage_closeFile(storage, "/home/liviusi/file1", 0);
+	assert(err == 1);
+	err = Storage_closeFile(storage, "/home/liviusi/file1", 1);
+	assert(err == 0);
+	err = Storage_closeFile(storage, "/home/liviusi/file1", 2);
+	assert(err == 0);
+	err = Storage_closeFile(storage, "/home/liviusi/file1", 2);
+	assert(err == 1);
+
+	Storage_Print(storage);
+
+	Storage_Free(storage);
 	ServerConfig_Free(config);
 }
