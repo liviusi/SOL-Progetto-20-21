@@ -59,13 +59,15 @@ ServerConfig_Set(server_config_t* config, const char* config_file_path)
 
 	size_t i = 0;
 	char buffer[BUFFERLEN];
+	char* dummy;
 	bool
 		flag_workers = false, flag_max = false, flag_storage = false,
 		flag_socket = false, flag_log = false;
 	unsigned long tmp;
 	while (i < PARAMS)
 	{
-		fgets(buffer, BUFFERLEN, config_file);
+		dummy = fgets(buffer, BUFFERLEN, config_file);
+		if (!dummy && !feof(config_file)) return -1;
 		if (strncmp(buffer, WORKERSNO, strlen(WORKERSNO)) == 0)
 		{
 			if (!flag_workers) flag_workers = true;
