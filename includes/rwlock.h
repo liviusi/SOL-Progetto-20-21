@@ -20,31 +20,47 @@ struct _rwlock
 typedef struct _rwlock rwlock_t;
 
 /**
+ * @brief Initializes read write lock.
+ * @returns Pointer to initialized lock on success, NULL on failure.
+ * @exception It sets errno to ENOMEM if and only if needed memory allocation fails.
 */
 rwlock_t*
 RWLock_Init();
 
 /**
+ * @brief Locks for reading.
+ * @returns 0 on success, -1 on failure.
+ * @exception It sets errno to EINVAL if lock is NULL.
 */
 int
 RWLock_ReadLock(rwlock_t* lock);
 
 /**
+ * @brief Unlocks for reading.
+ * @returns 0 on success, -1 on failure.
+ * @exception It sets errno to EINVAL if lock is NULL.
 */
 int
 RWLock_ReadUnlock(rwlock_t* lock);
 
 /**
+ * @brief Locks for writing.
+ * @returns 0 on success, -1 on failure.
+ * @exception It sets errno to EINVAL if lock is NULL.
 */
 int
 RWLock_WriteLock(rwlock_t* lock);
 
 /**
+ * @brief Unlocks for writing.
+ * @returns 0 on success, -1 on failure.
+ * @exception It sets errno to EINVAL if lock is NULL.
 */
 int
 RWLock_WriteUnlock(rwlock_t* lock);
 
 /**
+ * Frees allocated resources.
 */
 void
 RWLock_Free(rwlock_t* lock);
