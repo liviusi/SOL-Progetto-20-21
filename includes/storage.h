@@ -48,6 +48,9 @@ int
 Storage_openFile(storage_t*, const char*, int, int);
 
 int
+Storage_readFile(storage_t*, const char*, void**, size_t*, int);
+
+int
 Storage_closeFile(storage_t*, const char*, int);
 
 #endif

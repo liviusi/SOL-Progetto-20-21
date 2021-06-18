@@ -28,7 +28,7 @@ int main(int argc, char* argv[])
 	err = Storage_openFile(storage, "/home/liviusi/file1", 0, 1);
 	assert(err == 1);
 	err = Storage_openFile(storage, "/home/liviusi/file6", 0 | O_CREATE | O_LOCK, 1);
-	assert(err == 0);
+	assert(err == 1);
 	err = Storage_openFile(storage, "/home/liviusi/file7", 0, 1);
 	assert(err == 1);
 	err = Storage_openFile(storage, "/home/liviusi/file8", 0, 1);
@@ -44,7 +44,21 @@ int main(int argc, char* argv[])
 	err = Storage_closeFile(storage, "/home/liviusi/file1", 2);
 	assert(err == 1);
 
-	Storage_Print(storage);
+	char* buffer = NULL; size_t buffer_size = 1;
+	err = Storage_readFile(storage, "/home/liviusi/file5", (void**) &buffer, &buffer_size, 0);
+	assert(err == 1);
+	free(buffer); buffer = NULL;
+	//printf("size = %lu, buffer = %s\n", buffer_size, buffer); buffer_size = 1;
+	err = Storage_readFile(storage, "/home/liviusi/file5", (void**) &buffer, &buffer_size, 1);
+	assert(err == 0);
+	free(buffer); buffer = NULL;
+	//printf("size = %lu, buffer = %s\n", buffer_size, buffer); buffer_size = 1;
+	err = Storage_readFile(storage, "/home/liviusi/file6", (void**) &buffer, &buffer_size, 0);
+	assert(err == 1);
+	free(buffer); buffer = NULL;
+	//printf("size = %lu, buffer = %s\n", buffer_size, buffer); buffer_size = 1;
+
+	//Storage_Print(storage);
 
 	Storage_Free(storage);
 	ServerConfig_Free(config);
