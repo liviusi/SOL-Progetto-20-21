@@ -260,10 +260,12 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 
 	// acquire mutex over storage
 	RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(storage->mutex)));
+	// fprintf(stderr, "Line 263: Storage lock acquired.\n");
 	// it already exists and flag contains O_CREATE
 	if ((exists = HashTable_Find(storage->files, (void*) filename)) == (IS_O_CREATE_SET(flags)))
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
+		// fprintf(stderr, "Line 268: Storage lock released.\n");
 		errno = EPERM;
 		return OP_FAILURE;
 	}
@@ -274,6 +276,7 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 		{
 			// should do some proper file deletion
 			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
+			// fprintf(stderr, "Line 279: Storage lock released.\n");
 			return OP_FAILURE;
 		}
 		else
@@ -317,6 +320,14 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 		}
 		else if (err == 1) // client has already opened this file
 		{
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
+			// fprintf(stderr, "Line 325: Storage lock released.\n");
+			errno = EBADF;
+			return OP_FAILURE;
+		}
+		else
+		{
 			if (IS_O_LOCK_SET(flags))
 			{
 				if (file->lock_owner == 0) file->lock_owner = client;
@@ -324,17 +335,11 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 				{
 					RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
 					RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
+					// fprintf(stderr, "Line 338: Storage lock released.\n");
 					errno = EACCES;
 					return OP_FAILURE;
 				}
 			}
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
-			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
-			errno = EBADF;
-			return OP_FAILURE;
-		}
-		else
-		{
 			// add the client to the list of the ones who opened this file
 			err = LinkedList_PushFront(file->called_open, str_client, len+1, NULL, 0);
 			if (err != 0)
@@ -350,6 +355,7 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 	}
 
 	RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
+	// fprintf(stderr, "Line 358: Storage lock released.\n");
 	return OP_SUCCESS;
 
 	fatal:
@@ -392,6 +398,7 @@ Storage_readFile(storage_t* storage, const char* filename, void** buf, size_t* s
 		if (err == 0) // file has not been opened by this client
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
 			*buf = NULL;
 			*size = 0;
 			return OP_FAILURE;
