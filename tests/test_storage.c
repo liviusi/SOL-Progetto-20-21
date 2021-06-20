@@ -21,19 +21,18 @@ int main(int argc, char* argv[])
 	assert(err == 0);
 	err = Storage_openFile(storage, "/home/liviusi/file4", O_CREATE, 1);
 	assert(err == 0);
-	err = Storage_openFile(storage, "/home/liviusi/file5", O_CREATE, 1);
+	err = Storage_openFile(storage, "/home/liviusi/file5", 0 | O_CREATE | O_LOCK, 1);
 	assert(err == 0);
 	err = Storage_openFile(storage, "/home/liviusi/file1", 0, 2);
 	assert(err == 0);
 	err = Storage_openFile(storage, "/home/liviusi/file1", 0, 1);
 	assert(err == 1);
-	err = Storage_openFile(storage, "/home/liviusi/file6", 0 | O_CREATE | O_LOCK, 1);
-	assert(err == 1);
+
 	err = Storage_openFile(storage, "/home/liviusi/file7", 0, 1);
 	assert(err == 1);
 	err = Storage_openFile(storage, "/home/liviusi/file8", 0, 1);
 	assert(err == 1);
-	Storage_Print(storage);
+	//Storage_Print(storage);
 
 	err = Storage_closeFile(storage, "/home/liviusi/file1", 0);
 	assert(err == 1);
@@ -59,6 +58,21 @@ int main(int argc, char* argv[])
 	//printf("size = %lu, buffer = %s\n", buffer_size, buffer); buffer_size = 1;
 
 	//Storage_Print(storage);
+
+	err = Storage_lockFile(storage, "/home/liviusi/file5", 1);
+	assert(err == 0);
+	err = Storage_unlockFile(storage, "/home/liviusi/file5", 1);
+	assert(err == 0);
+	err = Storage_lockFile(storage, "/home/liviusi/file5", 1);
+	assert(err == 0);
+	err = Storage_lockFile(storage, "/home/liviusi/file4", 1);
+	assert(err == 0);
+	err = Storage_lockFile(storage, "/home/liviusi/file1", 42);
+	assert(err == 1);
+	err = Storage_unlockFile(storage, "/home/liviusi/file1", 42);
+	assert(err == 1);
+
+	Storage_Print(storage);
 
 	Storage_Free(storage);
 	ServerConfig_Free(config);

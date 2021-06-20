@@ -35,21 +35,43 @@ struct _storage
 
 typedef struct _storage storage_t;
 
+/**
+*/
 storage_t*
 Storage_Init(size_t, size_t, replacement_algo_t);
 
+/**
+*/
 void
 Storage_Print(const storage_t*);
 
+/**
+*/
 void
 Storage_Free(storage_t*);
 
+/**
+*/
 int
 Storage_openFile(storage_t*, const char*, int, int);
 
+/**
+*/
 int
 Storage_readFile(storage_t*, const char*, void**, size_t*, int);
 
+/**
+*/
+int
+Storage_lockFile(storage_t* storage, const char* pathname, int client);
+
+/**
+*/
+int
+Storage_unlockFile(storage_t* storage, const char* pathname, int client);
+
+/**
+*/
 int
 Storage_closeFile(storage_t*, const char*, int);
 
