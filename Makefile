@@ -90,3 +90,5 @@ clean cleanall:
 	rm -r $(BUILD_DIR) $(OBJ_DIR)
 	mkdir $(BUILD_DIR)
 	mkdir $(OBJ_DIR)
+	@touch $(BUILD_DIR)/.keep
+	@touch $(OBJ_DIR)/.keep
