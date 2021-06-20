@@ -29,9 +29,9 @@ int main(int argc, char* argv[])
 	assert(err == 1);
 
 	err = Storage_openFile(storage, "/home/liviusi/file7", 0, 1);
-	assert(err == 1);
+	assert(err == 0);
 	err = Storage_openFile(storage, "/home/liviusi/file8", 0, 1);
-	assert(err == 1);
+	assert(err == 0);
 	//Storage_Print(storage);
 
 	err = Storage_closeFile(storage, "/home/liviusi/file1", 0);
