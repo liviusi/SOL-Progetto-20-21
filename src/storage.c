@@ -1,6 +1,5 @@
 /**
  * @brief Source file for storage header. 
- * IT IS TO BE REDONE FROM SCRATCH.
  * @author Giacomo Trapani.
 */
 
