@@ -13,6 +13,15 @@
 	if ((variable = function_call) != expected_value) return OP_FATAL;
 
 /**
+ * @brief Returns fatal error if called function output value is equal to expected value.
+ * @param variable will be set to function_call output value
+ * @param expected_value value returned by function_call in case of failure
+ * @param function_call actual function call
+*/
+#define RETURN_FATAL_IF_EQ(variable, expected_value, function_call) \
+	if ((variable = function_call) == expected_value) return OP_FATAL;
+
+/**
  * @brief Exits with EXIT_FAILURE if called function output value is not equal to expected value.
  * @param variable will be set to function_call output value
  * @param expected_value value returned by function_call in case of success
