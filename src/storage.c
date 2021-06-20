@@ -270,8 +270,8 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 	{
 		if (storage->files_no == storage->max_files_no)
 		{
-			// should do some proper file deletion
 			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
+			errno = EPERM;
 			return OP_FAILURE;
 		}
 		else
