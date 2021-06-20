@@ -268,8 +268,7 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 	}
 	if (exists == 0) // file is not inside the storage
 	{
-		if (storage->files_no == storage->max_files_no ||
-				storage->storage_size + sizeof(stored_file_t) > storage->max_storage_size)
+		if (storage->files_no == storage->max_files_no)
 		{
 			// should do some proper file deletion
 			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(storage->mutex)));
@@ -278,7 +277,6 @@ Storage_openFile(storage_t* storage, const char* filename, int flags, int client
 		else
 		{
 			storage->files_no++;
-			storage->storage_size += sizeof(stored_file_t);
 			RETURN_FATAL_IF_EQ(file, NULL, StoredFile_Init(filename, NULL, 0));
 			if (IS_O_LOCK_SET(flags)) file->lock_owner = client;
 			if (IS_O_LOCK_SET(flags) && IS_O_CREATE_SET(flags)) file->potential_writer = client;
@@ -501,7 +499,7 @@ Storage_unlockFile(storage_t* storage, const char* pathname, int client)
 		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Contains(file->called_open, str_client));
 		if (err == 1) // file has been opened by client
 		{
-			if (client != file->lock_owner) // client already owns the lock
+			if (client != file->lock_owner) // client does not own the lock.
 			{
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
 				errno = EACCES;
