@@ -7,6 +7,8 @@
 #define _RWLOCK_H_
 
 #ifdef DEBUG
+#include <pthread.h>
+#include <stdbool.h>
 struct _rwlock
 {
 	pthread_mutex_t mutex; // mutex is used to control access to struct
