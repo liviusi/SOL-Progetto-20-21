@@ -57,7 +57,7 @@ LinkedList_GetLast(const linked_list_t* list);
  * @param key_size cannot be 0.
  * @exception It sets "errno" to "EINVAL" if any param is not valid.
  * The function may also fail and set "errno" for any of the errors
- * specified for the routine "malloc".
+ * specified for the routine "Node_Create".
 */
 int
 LinkedList_PushFront(linked_list_t* list, const char* key,
@@ -71,7 +71,7 @@ LinkedList_PushFront(linked_list_t* list, const char* key,
  * @param key_size cannot be 0.
  * @exception It sets "errno" to "EINVAL" if any param is not valid.
  * The function may also fail and set "errno" for any of the errors
- * specified for the routine "malloc".
+ * specified for the routine "Node_Create".
 */
 int
 LinkedList_PushBack(linked_list_t* list, const char* key,

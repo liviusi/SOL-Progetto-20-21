@@ -44,7 +44,7 @@ typedef struct _hashtable hashtable_t;
  * @param free_data pointer to function used to free node's
  * data. It will be set to free if param is NULL.
  * @exception It sets "errno" for any of the errors
- * specified for the routine "malloc".
+ * specified for the routines "malloc", "LinkedList_Init".
 */
 hashtable_t*
 HashTable_Init(size_t buckets_no, size_t (*hash_function) (const void*), 
