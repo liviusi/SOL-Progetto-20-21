@@ -278,7 +278,6 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 		if (storage->files_no == storage->max_files_no)
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
-
 			errno = EPERM;
 			return OP_FAILURE;
 		}
@@ -440,7 +439,7 @@ int is_regular_file(const char *pathname)
 }
 
 int
-Storage_writeFile(storage_t* storage, const char* pathname, int client, linked_list_t** evicted)
+Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evicted, int client)
 {
 	if (!storage || !pathname)
 	{
@@ -525,13 +524,14 @@ Storage_writeFile(storage_t* storage, const char* pathname, int client, linked_l
 			{
 				if (storage->storage_size + length <= storage->max_storage_size) break;
 				RETURN_FATAL_IF_NEQ(err, 0, Storage_getVictim(storage, &victim_name));
-				//fprintf(stderr, "victim is %s\n", victim_name);
+				//fprintf(stderr, "[%d] victim is %s\n", __LINE__, victim_name);
 				if (strcmp(victim_name, pathname) == 0) failure = true;
 				RETURN_FATAL_IF_EQ(tmp, NULL, (stored_file_t*)
 							HashTable_GetPointerToData(storage->files, (void*) victim_name));
 				if (evicted) RETURN_FATAL_IF_NEQ(err, 0, LinkedList_PushFront(tmp_evicted, victim_name,
 							strlen(victim_name) + 1, tmp->contents, tmp->contents_size));
 				storage->storage_size -= tmp->contents_size;
+				storage->files_no--;
 				RETURN_FATAL_IF_NEQ(err, 0, HashTable_DeleteNode(storage->files, (void*) victim_name));
 				free(victim_name);
 			}
@@ -624,6 +624,7 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 				if (evicted) RETURN_FATAL_IF_NEQ(err, 0, LinkedList_PushFront(tmp_evicted, victim_name,
 							strlen(victim_name) + 1, tmp->contents, tmp->contents_size));
 				storage->storage_size -= tmp->contents_size;
+				storage->files_no--;
 				RETURN_FATAL_IF_NEQ(err, 0, HashTable_DeleteNode(storage->files, (void*) victim_name));
 				free(victim_name);
 			}
@@ -850,4 +851,53 @@ Storage_Free(storage_t* storage)
 	LinkedList_Free(storage->sorted_files);
 	HashTable_Free(storage->files);
 	free(storage);
+}
+
+int
+Storage_removeFile(storage_t* storage, const char* pathname, int client)
+{
+	if (!storage || !pathname)
+	{
+		errno = EINVAL;
+		return OP_FAILURE;
+	}
+	int err; // used as a placeholder for functions' return values
+	int exists; // set to 1 if file is inside the storage
+	stored_file_t* file; // used to denote file in storage corresponding pathname
+	char str_client[BUFFERLEN]; // used when converting int client to a string
+
+	snprintf(str_client, BUFFERLEN, "%d", client);
+	RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(storage->lock));
+	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
+	if (exists == 1) // file is inside storage
+	{
+		RETURN_FATAL_IF_EQ(file, NULL, (stored_file_t*)
+					HashTable_GetPointerToData(storage->files, (void*) pathname));
+
+		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Contains(file->called_open, str_client));
+		if (err == 0)
+		{
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+			errno = EACCES;
+			return OP_FAILURE;
+		}
+		if (file->lock_owner != client)
+		{
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+			errno = EACCES;
+			return OP_FAILURE;
+		}
+		storage->storage_size -= file->contents_size;
+		storage->files_no--;
+		RETURN_FATAL_IF_EQ(err, -1, HashTable_DeleteNode(storage->files, (void*) pathname));
+		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Remove(storage->sorted_files, pathname));
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+	}
+	else
+	{
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+		errno = EBADF;
+		return OP_FAILURE;
+	}
+	return OP_SUCCESS;
 }

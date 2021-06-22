@@ -79,24 +79,27 @@ int main(int argc, char* argv[])
 
 	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/Makefile", O_CREATE|O_LOCK, 5);
 	assert(err == 0);
-	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/Makefile", 5, NULL);
+	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/Makefile", NULL, 5);
 	assert(err == 0);
-	//Storage_Print(storage);
+	Storage_Print(storage);
+	err = Storage_removeFile(storage, "/home/liviusi/file4", 1);
+	assert(err == 0);
 
 	linked_list_t* list = NULL;
 	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/src/data_structures/rwlock.c", O_CREATE|O_LOCK, 3);
 	assert(err == 0);
-	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/src/data_structures/rwlock.c", 3, &list);
-	assert(err == 0);
+	Storage_Print(storage);
+	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/src/data_structures/rwlock.c", &list, 3);
 	LinkedList_Print(list);
+	assert(err == 0);
 	LinkedList_Free(list); list = NULL;
 
 	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/includes/wrappers.h", O_CREATE|O_LOCK, 5);
 	assert(err == 0);
-	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/includes/wrappers.h", 5, &list);
+	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/includes/wrappers.h", &list, 5);
 	assert(err == 0);
 	//Storage_Print(storage);
-	LinkedList_Print(list);
+	//LinkedList_Print(list);
 	LinkedList_Free(list); list = NULL;
 	char* string = (char*) malloc(sizeof(char) * 100);
 	strcpy(string, STRING_SAMPLE);

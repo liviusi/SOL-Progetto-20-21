@@ -65,8 +65,8 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf,
 /**
 */
 int
-Storage_writeFile(storage_t* storage, const char* pathname, int client,
-			linked_list_t** evicted);
+Storage_writeFile(storage_t* storage, const char* pathname,
+			linked_list_t** evicted, int client);
 
 /**
 */
@@ -87,6 +87,11 @@ Storage_unlockFile(storage_t* storage, const char* pathname, int client);
 /**
 */
 int
-Storage_closeFile(storage_t*, const char*, int);
+Storage_closeFile(storage_t* storage, const char* pathname, int client);
+
+/**
+*/
+int
+Storage_removeFile(storage_t* storage, const char* pathname, int client);
 
 #endif
