@@ -37,21 +37,36 @@ struct _storage
 typedef struct _storage storage_t;
 
 /**
+ * @brief Initializes empty storage data structure.
+ * @returns Initialized data structure on success,
+ * NULL on failure.
+ * @param max_files_no cannot be 0.
+ * @param max_storage_size cannot be 0.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routines "malloc", "RWLock_Init", "LinkedList_Init",
+ * "HashTable_Init".
 */
 storage_t*
 Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t chosen_algo);
 
 /**
-*/
-void
-Storage_Print(const storage_t* storage);
-
-/**
-*/
-void
-Storage_Free(storage_t* storage);
-
-/**
+ * @brief Handles file opening.
+ * @returns 0 on success, 1 on failure, 2 on fatal errors.
+ * @param storage cannot be NULL.
+ * @param pathname cannot be NULL.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routines "RWLock_ReadLock", "RWLock_ReadUnlock",
+ * "RWLock_WriteLock", "RWLock_WriteUnlock", "LinkedList_PushFront",
+ * "StoredFile_Init", "HashTable_Find", "HashTable_Insert",
+ * "HashTable_GetPointerToData" which are all considered fatal errors;
+ * non-fatal failures may happen because:
+ *  	- storage is already full (sets "errno" to "ENOSPC");
+ *  	- file has already been opened by this client (sets "errno" to "EBADF");
+ *  	- another client currently own this file's lock and this client
+ *  		is trying to acquire it (sets "errno" to "EACCES");
+ *  	- client is trying to create an already existing file (sets "errno" to "EEXIST").
 */
 int
 Storage_openFile(storage_t* storage, const char* pathname, int flags, int client);
@@ -93,5 +108,17 @@ Storage_closeFile(storage_t* storage, const char* pathname, int client);
 */
 int
 Storage_removeFile(storage_t* storage, const char* pathname, int client);
+
+/**
+ * Utility print function.
+*/
+void
+Storage_Print(const storage_t* storage);
+
+/**
+ * Frees allocated resources.
+*/
+void
+Storage_Free(storage_t* storage);
 
 #endif
