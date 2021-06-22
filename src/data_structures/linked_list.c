@@ -39,12 +39,14 @@ LinkedList_Init(void (*free_data) (void*))
 const node_t*
 LinkedList_GetFirst(const linked_list_t* list)
 {
+	if (!list) return NULL;
 	return list->first;
 }
 
 const node_t*
 LinkedList_GetLast(const linked_list_t* list)
 {
+	if (!list) return NULL;
 	return list->last;
 }
 
@@ -117,11 +119,13 @@ LinkedList_PopFront(linked_list_t* list, char** keyptr, void** dataptr)
 		return -1;
 	}
 	list->nelems--;
+	errno = 0;
 	if ((keyptr != NULL) && (Node_CopyKey(list->first, keyptr) != 0))
 	{
 		if (errno == ENOMEM) return -1;
 		else *keyptr = NULL;
 	}
+	errno = 0;
 	if ((dataptr != NULL) && (Node_CopyData(list->first, dataptr) == 0))
 	{
 		if (errno == ENOMEM) return -1;

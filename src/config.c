@@ -25,11 +25,11 @@
 struct _server_config
 {
 	unsigned long
-		workers_no,
-		max_files_no,
-		storage_size;
-	char socket_path[MAXPATH];
-	char log_path[MAXPATH];
+		workers_no, // number of thread workers
+		max_files_no, // maximum number of storable files
+		storage_size; // maximum storage size
+	char socket_path[MAXPATH]; // absolute path to socket file
+	char log_path[MAXPATH]; // absolute path to log file
 };
 #endif
 

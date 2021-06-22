@@ -14,11 +14,11 @@
 #ifndef DEBUG
 struct _hashtable
 {
-	size_t buckets_no;
-	linked_list_t** buckets; 
-	size_t (*hash_function) (const void*);
-	int (*hash_compare) (const void*, const void*);
-	void (*free_data) (void*);
+	size_t buckets_no; // number of buckets
+	linked_list_t** buckets; // array of pointer to linked lists denoting buckets
+	size_t (*hash_function) (const void*); // pointer to hash function
+	int (*hash_compare) (const void*, const void*); // pointer to key comparison function
+	void (*free_data) (void*); // pointer to data freeing function
 };
 #endif
 
@@ -159,9 +159,9 @@ HashTable_Find(const hashtable_t* table, const void* key)
 }
 
 size_t
-HashTable_CopyOutData(const hashtable_t* table, const void* key, void** data)
+HashTable_CopyOutData(const hashtable_t* table, const void* key, void** dataptr)
 {
-	if (!table || !key)
+	if (!table || !key || !dataptr)
 	{
 		errno = EINVAL;
 		return 0;
@@ -171,19 +171,19 @@ HashTable_CopyOutData(const hashtable_t* table, const void* key, void** data)
 	char* curr_key;
 	size_t size;
 	int err;
+	*dataptr = NULL;
 	for (curr = LinkedList_GetFirst((table->buckets)[hash]); curr != NULL; curr = Node_GetNext(curr))
 	{
 		err = Node_CopyKey(curr, &curr_key);
 		if (err != 0) return -1;
 		if (table->hash_compare(key, curr_key) == 0)
 		{
-			size = Node_CopyData(curr, data);
+			size = Node_CopyData(curr, dataptr);
 			free(curr_key);
 			return size;
 		}
 		free(curr_key);
 	}
-	*data = NULL;
 	return 0;
 }
 

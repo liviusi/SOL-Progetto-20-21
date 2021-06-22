@@ -23,8 +23,11 @@ typedef struct _rwlock rwlock_t;
 
 /**
  * @brief Initializes read write lock.
- * @returns Pointer to initialized lock on success, NULL on failure.
- * @exception It sets errno to ENOMEM if and only if needed memory allocation fails.
+ * @returns Pointer to initialized lock on success,ù
+ * NULL on failure.
+ * @exception It sets "errno" for any of the errors
+ * specified for the routines "malloc", "pthread_mutex_init",
+ * "pthread_cond_init".
 */
 rwlock_t*
 RWLock_Init();
@@ -32,7 +35,11 @@ RWLock_Init();
 /**
  * @brief Locks for reading.
  * @returns 0 on success, -1 on failure.
- * @exception It sets errno to EINVAL if lock is NULL.
+ * @param lock cannot be NULL.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routines "pthread_mutex_lock", "pthread_cond_wait",
+ * "pthread_mutex_unlock".
 */
 int
 RWLock_ReadLock(rwlock_t* lock);
@@ -40,7 +47,11 @@ RWLock_ReadLock(rwlock_t* lock);
 /**
  * @brief Unlocks for reading.
  * @returns 0 on success, -1 on failure.
- * @exception It sets errno to EINVAL if lock is NULL.
+ * @param lock cannot be NULL.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routines "pthread_mutex_lock", "pthread_cond_broadcast",
+ * "pthread_mutex_unlock".
 */
 int
 RWLock_ReadUnlock(rwlock_t* lock);
@@ -48,7 +59,11 @@ RWLock_ReadUnlock(rwlock_t* lock);
 /**
  * @brief Locks for writing.
  * @returns 0 on success, -1 on failure.
- * @exception It sets errno to EINVAL if lock is NULL.
+ * @param lock cannot be NULL.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routines "pthread_mutex_lock", "pthread_cond_wait",
+ * "pthread_mutex_unlock".
 */
 int
 RWLock_WriteLock(rwlock_t* lock);
@@ -56,7 +71,11 @@ RWLock_WriteLock(rwlock_t* lock);
 /**
  * @brief Unlocks for writing.
  * @returns 0 on success, -1 on failure.
- * @exception It sets errno to EINVAL if lock is NULL.
+ * @param lock cannot be NULL.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routines "pthread_mutex_lock", "pthread_cond_broadcast",
+ * "pthread_mutex_unlock", "malloc".
 */
 int
 RWLock_WriteUnlock(rwlock_t* lock);
