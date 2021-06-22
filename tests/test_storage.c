@@ -72,8 +72,22 @@ int main(int argc, char* argv[])
 	err = Storage_unlockFile(storage, "/home/liviusi/file1", 42);
 	assert(err == 1);
 
+	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/Makefile", O_CREATE|O_LOCK, 5);
+	assert(err == 0);
+	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/Makefile", 5, NULL);
+	assert(err == 0);
 	Storage_Print(storage);
 
+	linked_list_t* list = NULL;
+	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/test.c", O_CREATE|O_LOCK, 3);
+	assert(err == 0);
+	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/test.c", 3, &list);
+	assert(err == 0);
+	Storage_Print(storage);
+
+	LinkedList_Print(list);
+
+	LinkedList_Free(list);
 	Storage_Free(storage);
 	ServerConfig_Free(config);
 }

@@ -15,6 +15,7 @@ typedef enum _replacement_algo
 
 #define DEBUG
 #ifdef DEBUG
+#include <rwlock.h>
 #include <hashtable.h>
 #include <linked_list.h>
 #include <pthread.h>
@@ -29,7 +30,7 @@ struct _storage
 	size_t files_no;
 	size_t storage_size;
 
-	pthread_mutex_t mutex;
+	rwlock_t* lock;
 };
 #endif
 
@@ -59,6 +60,11 @@ Storage_openFile(storage_t*, const char*, int, int);
 */
 int
 Storage_readFile(storage_t*, const char*, void**, size_t*, int);
+
+/**
+*/
+int
+Storage_writeFile(storage_t* storage, const char* pathname, int client, linked_list_t** expelled);
 
 /**
 */
