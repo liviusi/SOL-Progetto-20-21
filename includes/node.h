@@ -96,29 +96,10 @@ const void*
 Node_GetData(const node_t* node);
 
 /**
- * @brief Replaces node with the node its next field points to. It frees the given node struct.
- * @returns 0 on success, -1 on failure.
- * @exception It sets errno to EINVAL if and only if param is NULL.
+ * Removes node. It frees the given node.
 */
-int
-Node_ReplaceWithNext(node_t** nodeptr);
-
-/**
- * @brief Replaces node with the node its previous field points to. It frees the given node struct.
- * @returns 0 on success, -1 on failure.
- * @exception It sets errno to EINVAL if and only if param is NULL.
-*/
-int
-Node_ReplaceWithPrevious(node_t** nodeptr);
-
-/**
- * @brief Makes param previous node point to param next node (i.e. param.prev.next = param.next, 
- * param.next.prev = param.prev). It frees the given node struct.
- * @returns 0 on success, -1 on failure.
- * @exception It sets errno to EINVAL if and only if param is NULL.
-*/
-int
-Node_Fold(node_t* node);
+void
+Node_Remove(node_t* node);
 
 /**
  * Frees allocated resources.

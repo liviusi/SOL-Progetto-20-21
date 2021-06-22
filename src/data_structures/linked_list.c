@@ -3,12 +3,14 @@
  * @author Giacomo Trapani.
 */
 
-#include <linked_list.h>
-#include <node.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <node.h>
+#include <wrappers.h>
+#include <linked_list.h>
+
 
 #ifndef DEBUG
 struct _linked_list
@@ -24,19 +26,14 @@ linked_list_t*
 LinkedList_Init(void (*free_data) (void*))
 {
 	linked_list_t* tmp = (linked_list_t*) malloc(sizeof(linked_list_t));
-	if (!tmp) goto no_more_memory;
+	if (!tmp) return NULL;
 
 	tmp->first = NULL;
 	tmp->last = NULL;
 	tmp->nelems = 0;
-	if (!free_data) tmp->free_data = free;
-	else tmp->free_data = free_data;
+	tmp->free_data = free_data ? free_data : free;
 
 	return tmp;
-
-	no_more_memory:
-		errno = ENOMEM;
-		return NULL;
 }
 
 const node_t*
@@ -122,14 +119,13 @@ LinkedList_PopFront(linked_list_t* list, char** key, void** data)
 	list->nelems--;
 	if ((key != NULL) && (Node_CopyKey(list->first, key) != 0))
 	{
-		if (errno == ENOMEM) return -1; // ENOMEM is considered a fatal error
-		else *key = NULL; // EINVAL is not considered a fatal error
+		if (errno == ENOMEM) return -1;
+		else *key = NULL;
 	}
 	if ((data != NULL) && (Node_CopyData(list->first, data) == 0))
 	{
-		fprintf(stderr, "ERRNO = %d\n", errno);
-		if (errno == ENOMEM) return -1; // ENOMEM is considered a fatal error
-		else *data = NULL; // EINVAL is not considered a fatal error
+		if (errno == ENOMEM) return -1;
+		else *data = NULL;
 	}
 	if (list->nelems == 0)
 	{
@@ -139,10 +135,12 @@ LinkedList_PopFront(linked_list_t* list, char** key, void** data)
 	}
 	else
 	{
-		if (Node_ReplaceWithNext(&(list->first)) != 0) // errno has been set to EINVAL
-			return -1;
+		node_t* tmp = (node_t*) Node_GetNext(list->first);
+		Node_SetPrevious(tmp, NULL);
+		Node_Free(list->first);
+		list->first = tmp;
 	}
-	// list->first has already been freed.
+	// list->first has now been freed.
 	return 0;
 }
 
@@ -157,13 +155,13 @@ LinkedList_PopBack(linked_list_t* list, char** key, void** data)
 	list->nelems--;
 	if ((key != NULL) && (Node_CopyKey(list->last, key) != 0))
 	{
-		if (errno == ENOMEM) return -1; // ENOMEM is considered a fatal error
-		else *key = NULL; // EINVAL is not considered a fatal error
+		if (errno == ENOMEM) return -1;
+		else *key = NULL;
 	}
 	if ((data != NULL) && (Node_CopyData(list->last, data) == 0))
 	{
-		if (errno == ENOMEM) return -1; // ENOMEM is considered a fatal error
-		else *data = NULL; // EINVAL is not considered a fatal error
+		if (errno == ENOMEM) return -1;
+		else *data = NULL;
 	}
 	if (list->nelems == 0)
 	{
@@ -173,8 +171,10 @@ LinkedList_PopBack(linked_list_t* list, char** key, void** data)
 	}
 	else
 	{
-		if (Node_ReplaceWithPrevious(&(list->last)) != 0) // errno has been set to EINVAL
-			return -1;
+		node_t* tmp = (node_t*) Node_GetPrevious(list->last);
+		Node_SetNext(tmp, NULL);
+		Node_Free(list->last);
+		list->last = tmp;
 	}
 	return 0;
 }
@@ -205,6 +205,7 @@ LinkedList_Remove(linked_list_t* list, const char* key)
 			if (!Node_GetPrevious(curr)) list->first = (node_t*) Node_GetNext(curr);
 			Node_Free(curr);
 			free(tmp);
+			list->nelems--;
 			return 0;
 		}
 	}
@@ -251,6 +252,8 @@ LinkedList_Contains(const linked_list_t* list, const char* key)
 void
 LinkedList_Print(const linked_list_t* list)
 {
+	if (!list) return;
+	fprintf(stdout, "Current elements : %lu\n", list->nelems);
 	const node_t* curr = list->first;
 	char* key = NULL;
 	while (1)

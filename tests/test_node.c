@@ -101,11 +101,11 @@ int main()
 		free(data);
 	}
 
-	Node_ReplaceWithPrevious(&node2);
-	Node_ReplaceWithNext(&node1);
-	Node_ReplaceWithNext(&node10);
-	Node_Fold(node3);
-	Node_Fold(node9);
+	Node_Remove(node2);
+	Node_Remove(node1);
+	Node_Remove(node3);
+	Node_Remove(node10);
+	Node_Remove(node9);
 	fprintf(stderr, "Nodes 1, 2, 3, 9, 10 have been purged.\n");
 	fprintf(stderr, "Iterating over previous node.\n");
 	while (1)
@@ -145,6 +145,6 @@ int main()
 	Node_Free(node5);
 	Node_Free(node6);
 	Node_Free(node7);
-	Node_Fold(node8);
+	Node_Free(node8);
 	fprintf(stderr, "Resources have been freed.\n");
 }

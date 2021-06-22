@@ -6,6 +6,7 @@
 #include <node.h>
 #include <stdio.h>
 #include <string.h>
+#include <wrappers.h>
 
 #ifndef DEBUG
 struct _node
@@ -22,39 +23,39 @@ struct _node
 node_t*
 Node_Create(const char* key, size_t key_size, const void* data, size_t data_size, void (*free_data) (void*))
 {
+	int err;
 	node_t* tmp = NULL;
 	char* tmp_key = NULL;
 	void* tmp_data = NULL;
 	tmp = (node_t*) malloc(sizeof(node_t));
-	if (!tmp) goto no_more_memory;
+	GOTO_LABEL_IF_EQ(tmp, NULL, err, init_failure);
 	if (key_size != 0)
 	{
 		tmp_key = (char*) malloc(key_size);
-		if (!tmp_key) goto no_more_memory;
+		GOTO_LABEL_IF_EQ(tmp_key, NULL, err, init_failure);
 		memcpy(tmp_key, key, key_size);
-		
 	}
 	tmp->key = tmp_key;
 	if (data_size != 0)
 	{
 		tmp_data = malloc(data_size);
-		if (!tmp_data) goto no_more_memory;
+		GOTO_LABEL_IF_EQ(tmp_data, NULL, err, init_failure);
 		memcpy(tmp_data, data, data_size);
 	}
 	tmp->data = tmp_data;
 	tmp->data_sz = data_size;
 	tmp->next = NULL;
 	tmp->prev = NULL;
-	if (!free_data) tmp->free_data = free;
-	else tmp->free_data = free_data;
+	tmp->free_data =  free_data ? free_data : free;
 
 	return tmp;
 
-	no_more_memory:
+	init_failure:
+		err = errno;
 		free(tmp_key);
 		free(tmp_data);
 		free(tmp);
-		errno = ENOMEM;
+		errno = err;
 		return NULL;
 }
 
@@ -160,52 +161,13 @@ Node_GetData(const node_t* node)
 	return node->data;
 }
 
-int
-Node_ReplaceWithNext(node_t** nodeptr)
+void
+Node_Remove(node_t* node)
 {
-	if (!nodeptr || !(*nodeptr))
-	{
-		errno = EINVAL;
-		return -1;
-	}
-	node_t* node = *nodeptr;
-	node_t* tmp = node->next;
-	if (tmp && tmp->prev) tmp->prev = node->prev;
-	if (node->prev) node->prev->next = tmp;
-	Node_Free(node);
-	*nodeptr = tmp;
-	return 0;
-}
-
-int
-Node_ReplaceWithPrevious(node_t** nodeptr)
-{
-	if (!nodeptr || !(*nodeptr))
-	{
-		errno = EINVAL;
-		return -1;
-	}
-	node_t* node = *nodeptr;
-	node_t* tmp = node->prev;
-	if (tmp && tmp->next) tmp->next = node->next;
-	if (node->next) node->next->prev = tmp;
-	Node_Free(node);
-	*nodeptr = tmp;
-	return 0;
-}
-
-int
-Node_Fold(node_t* node)
-{
-	if (!node)
-	{
-		errno = EINVAL;
-		return -1;
-	}
+	if (!node) return;
 	if (node->prev) node->prev->next = node->next;
 	if (node->next) node->next->prev = node->prev;
 	Node_Free(node);
-	return 0;
 }
 
 void
@@ -218,7 +180,6 @@ Node_Free(node_t* node)
 		free(node->key);
 		node->free_data(node->data);
 		free(node);
-		node = NULL;
 	}
 	return;
 }

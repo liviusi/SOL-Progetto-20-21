@@ -70,8 +70,6 @@ int main()
 	free(data);
 	LinkedList_Print(list);
 	LinkedList_PopFront(list, &key, (void**) &data);
-	fprintf(stderr, "KEY : %s\tDATA : %s\n", key, data);
-	LinkedList_Print(list);
 	free(key);
 	free(data);
 	LinkedList_Remove(list, node8_tmp_key);
@@ -79,15 +77,29 @@ int main()
 	LinkedList_Remove(list, node7_tmp_key);
 	LinkedList_Remove(list, node3_tmp_key);
 	LinkedList_PopBack(list, &key, (void**) &data);
-	fprintf(stderr, "KEY : %s\tDATA : %s\n", key, data);
 	free(key);
 	free(data);
-	LinkedList_Print(list);
+	linked_list_t* tmp = LinkedList_Init(NULL);
 	LinkedList_PopBack(list, &key, (void**) &data);
-	fprintf(stderr, "KEY : %s\tDATA : %s\n", key, data);
+	LinkedList_PushBack(tmp, key, strlen(key) + 1, (void*) data, strlen(data) + 1);
+	free(key); free(data);
+	LinkedList_PopBack(list, &key, (void**) &data);
+	LinkedList_PushBack(tmp, key, strlen(key) + 1, (void*) data, strlen(data) + 1);
+	free(key); free(data);
+	LinkedList_PopBack(list, &key, (void**) &data);
+	LinkedList_PushBack(tmp, key, strlen(key) + 1, (void*) data, strlen(data) + 1);
+	free(key); free(data);
+	LinkedList_PopBack(list, &key, (void**) &data);
+	LinkedList_PushBack(tmp, key, strlen(key) + 1, (void*) data, strlen(data) + 1);
+	free(key); free(data);
+	
+	LinkedList_PopBack(list, &key, (void**) &data);
+	LinkedList_PushBack(tmp, key, strlen(key) + 1, (void*) data, strlen(data) + 1);
+	free(key); free(data);
+	LinkedList_Print(tmp);
+	LinkedList_Print(list);
 	LinkedList_Free(list);
-	free(key);
-	free(data);
+	LinkedList_Free(tmp);
 
 	key = (char*) malloc(sizeof(char) * 128);
 	data = (char*) malloc(sizeof(char) * 128);
