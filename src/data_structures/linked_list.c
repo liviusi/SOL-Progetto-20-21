@@ -274,6 +274,7 @@ LinkedList_Print(const linked_list_t* list)
 void
 LinkedList_Free(linked_list_t* list)
 {
+	if (!list) return;
 	node_t* tmp;
 	node_t* curr = list->first;
 	while (1)
