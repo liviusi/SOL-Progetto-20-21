@@ -10,7 +10,7 @@
  * @param function_call actual function call
 */
 #define RETURN_FATAL_IF_NEQ(variable, expected_value, function_call) \
-	if ((variable = function_call) != expected_value) {perror(#function_call); printf("errno = %d: Line no.%d\n", errno, __LINE__); return OP_FATAL; }
+	if ((variable = function_call) != expected_value) {fprintf(stderr, "[%s:%d] Fatal error occurred.", __FILE__, __LINE__); return OP_FATAL; }
 
 /**
  * @brief Returns fatal error if called function output value is equal to expected value.
@@ -19,7 +19,7 @@
  * @param function_call actual function call
 */
 #define RETURN_FATAL_IF_EQ(variable, expected_value, function_call) \
-	if ((variable = function_call) == expected_value) {perror(#function_call); printf("errno = %d: Line no.%d\n", errno, __LINE__); return OP_FATAL; }
+	if ((variable = function_call) == expected_value) {fprintf(stderr, "[%s:%d] Fatal error occurred.", __FILE__, __LINE__); return OP_FATAL; }
 
 /**
  * @brief Exits with EXIT_FAILURE if called function output value is not equal to expected value.
