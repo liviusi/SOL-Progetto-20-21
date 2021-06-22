@@ -29,68 +29,72 @@ typedef struct _node node_t;
 /**
  * @brief Allocates memory for a new node and creates it with given key and data.
  * @returns Returns new node on success, NULL on failure.
- * @exception Sets errno to ENOMEM if and only if memory allocation fails.
+ * @param key cannot be NULL.
+ * @param key_size cannot be 0.
+ * @param free_data pointer to function used to free node's data. It will be set to
+ * free if param is NULL.
+ * @exception It sets "errno" for any of the errors specified for the routine "malloc".
 */
 node_t*
 Node_Create(const char* key, size_t key_size, const void* data,
 		size_t data_size, void (*free_data) (void*));
 
 /**
- * @brief Sets first param's next pointer to the second param.
+ * @brief Sets node1's next to the second param.
  * @returns 0 on success, -1 on failure.
- * @exception It sets errno to EINVAL if and only if first param is NULL.
+ * @exception It sets "errno" to "EINVAL" if and only if node1 is NULL.
 */
 int
 Node_SetNext(node_t* node1, const node_t* node2);
 
 /**
- * @brief Sets first param's previous pointer to the second param.
+ * @brief Sets node1's previous to the second param.
  * @returns 0 on success, -1 on failure.
- * @exception It sets errno to EINVAL if and only if first param is NULL.
+ * @exception It sets "errno" to "EINVAL" if and only if node1 is NULL.
 */
 int
 Node_SetPrevious(node_t* node1, const node_t* node2);
 
 /**
- * @brief Getter for next node. Check whether errno has been set to EINVAL
- * when NULL is returned.
+ * @brief Getter for next node.
  * @returns Pointer to next node on success (which may be NULL), NULL on failure.
- * @exception It sets errno to EINVAL if and only if param is NULL.
+ * @exception It sets "errno" to "EINVAL" if and only if node1 is NULL.
 */
 const node_t*
 Node_GetNext(const node_t* node);
 
 /**
- * @brief Getter for previous node. Check whether errno has been set to EINVAL
- * when NULL is returned.
+ * @brief Getter for previous node.
  * @returns Pointer to previous node on success (which may be NULL), NULL on failure.
- * @exception It sets errno to EINVAL if and only if param is NULL.
+ * @exception It sets "errno" to "EINVAL" if and only if node1 is NULL.
 */
 const node_t*
 Node_GetPrevious(const node_t* node);
 
 /**
- * @brief Copy node's key param to non-allocated char buffer.
+ * @brief Copy node's key to non-allocated char buffer.
  * @returns 0 on success, -1 on failure.
- * @exception It sets errno to EINVAL if and only if first param is NULL, (it sets errno to)
- * ENOMEM if and only if any memory allocation fails.
+ * @exception It sets "errno" to "EINVAL" if node or keyptr is NULL.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routine "malloc".
 */
 int
 Node_CopyKey(const node_t* node, char** keyptr);
 
 /**
- * @brief Copy node's data param to non-allocated char buffer.
+ * @brief Copy node's data param to non-allocated buffer.
  * @returns Size of data buffer on success, 0 otherwise.
- * @exception It sets errno to EINVAL if and only if first param is NULL, (it sets errno to)
- * ENOMEM if and only if any memory allocation fails.
+ * @exception It sets "errno" to "EINVAL" if node or dataptr is NULL.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routine "malloc".
 */
 size_t
 Node_CopyData(const node_t* node, void** dataptr);
 
 /**
- * @brief Gets a pointer to node's data param.
+ * @brief Gets node's data param.
  * @returns Pointer to node's data on success (which may be NULL), NULL on failure.
- * @exception It sets errno to EINVAL if and only if param is NULL. 
+ * @exception It sets "errno" to "EINVAL" if node is NULL. 
 */
 const void*
 Node_GetData(const node_t* node);

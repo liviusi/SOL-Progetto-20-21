@@ -21,8 +21,14 @@ struct _node
 #endif
 
 node_t*
-Node_Create(const char* key, size_t key_size, const void* data, size_t data_size, void (*free_data) (void*))
+Node_Create(const char* key, size_t key_size, const void* data,
+			size_t data_size, void (*free_data) (void*))
 {
+	if (!key || key_size == 0)
+	{
+		errno = EINVAL;
+		return NULL;
+	}
 	int err;
 	node_t* tmp = NULL;
 	char* tmp_key = NULL;
@@ -108,7 +114,7 @@ Node_GetPrevious(const node_t* node)
 int
 Node_CopyKey(const node_t* node, char** keyptr)
 {
-	if (!node || !(node->key))
+	if (!node || !(node->key) || !keyptr)
 	{
 		errno = EINVAL;
 		return -1;
@@ -128,7 +134,7 @@ Node_CopyKey(const node_t* node, char** keyptr)
 size_t
 Node_CopyData(const node_t* node, void** dataptr)
 {
-	if (!node)
+	if (!node || !dataptr)
 	{
 		errno = EINVAL;
 		return 0;
