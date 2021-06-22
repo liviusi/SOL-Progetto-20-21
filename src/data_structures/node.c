@@ -11,12 +11,12 @@
 #ifndef DEBUG
 struct _node
 {
-	char* key;
-	unsigned long data_sz;
-	void* data;
-	struct _node* prev;
-	struct _node* next;
-	void (*free_data) (void*);
+	char* key; // node's key
+	unsigned long data_sz; // node's data size
+	void* data; // generic data buffer
+	struct _node* prev; // pointer to previous element
+	struct _node* next; // pointer to next element
+	void (*free_data) (void*); // pointer to function used to free data
 };
 #endif
 

@@ -25,84 +25,110 @@ typedef struct _linked_list linked_list_t;
 /**
  * @brief Initializes empty linked list data structure.
  * @returns Initialized data structure on success, NULL on failure.
- * @exception It sets errno to ENOMEM if and only if needed memory allocation fails.
+ * @param free_data pointer to function used to free node's data. It will be set to
+ * free if param is NULL.
+ * @exception It sets "errno" for any of the errors specified for the routine "malloc".
 */
 linked_list_t* LinkedList_Init(void (*free_data) (void*));
 
 /**
  * @brief Getter for first element of linked list.
- * @returns Pointer to first element of the list. NULL is returned if and only if
+ * @returns Pointer to first element of the list. NULL is returned if
  * list is empty.
 */
 const node_t*
-LinkedList_GetFirst(const linked_list_t*);
+LinkedList_GetFirst(const linked_list_t* list);
 
 /**
  * @brief Getter for last element of linked list.
- * @returns Pointer to last element of the list. NULL is returned if and only if
+ * @returns Pointer to last element of the list. NULL is returned if
  * list is empty.
 */
 const node_t*
-LinkedList_GetLast(const linked_list_t*);
+LinkedList_GetLast(const linked_list_t* list);
 
 /**
- * @brief Creates and pushes node with given parameters to first position in linked list.
+ * @brief Creates and pushes node with given parameters to
+ * first position in linked list.
  * @returns 0 on success, -1 on failure.
- * @exception It sets errno to ENOMEM if and only if needed memory allocation fails,
- * (it sets errno to) EINVAL if and only if the first param is NULL.
+ * @param key cannot be NULL.
+ * @param key_size cannot be 0.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routine "malloc".
 */
 int
-LinkedList_PushFront(linked_list_t*, const char*, size_t, const void*, size_t);
+LinkedList_PushFront(linked_list_t* list, const char* key,
+			size_t key_size, const void* data, size_t data_size);
 
 /**
- * @brief Creates and pushes node with given parameters to last position in linked list.
+ * @brief Creates and pushes node with given parameters to
+ * last position in linked list.
  * @returns 0 on success, -1 on failure.
- * @exception It sets errno to ENOMEM if and only if needed memory allocation fails,
- * (it sets errno to) EINVAL if and only if the first param is NULL.
+ * @param key cannot be NULL.
+ * @param key_size cannot be 0.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routine "malloc".
 */
 int
-LinkedList_PushBack(linked_list_t*, const char*, size_t, const void*, size_t);
+LinkedList_PushBack(linked_list_t* list, const char* key,
+			size_t key_size, const void* data, size_t data_size);
 
 /**
- * @brief Pops first node from list and assigns its contents to second and third param.
- * NULL may be passed as second and third param: in this case no contents will be assigned.
+ * @brief Pops first node from list and assigns its contents to
+ * keyptr and dataptr; both of them must be non-allocated.
  * @returns 0 on success, -1 on failure.
- * @exception It sets errno to EINVAL if list is empty or first param is NULL, (it sets errno to)
- * ENOMEM if and only if needed memory allocation fails.
+ * @param keyptr if it is NULL, no content will be assigned.
+ * @param dataptr if it is NULL, no content will be assigned.
+ * @exception It sets "errno" to "EINVAL" if list is empty
+ * or NULL. The function may also fail and set "errno" for
+ * any of the errors specified for the routines "Node_CopyKey",
+ * "Node_CopyData".
 */
 int
-LinkedList_PopFront(linked_list_t*, char**, void**);
+LinkedList_PopFront(linked_list_t* list, char** keyptr, void** dataptr);
 
 /**
- * @brief Pops last node from list and assigns its contents to second and third param.
- * NULL may be passed as second and third param: in this case no contents will be assigned.
+ * @brief Pops last node from list and assigns its contents to
+ * keyptr and dataptr; both of them must be non-allocated.
  * @returns 0 on success, -1 on failure.
- * @exception It sets errno to EINVAL if list is empty or first param is NULL, (it sets errno to)
- * ENOMEM if and only if needed memory allocation fails.
+ * @param keyptr if it is NULL, no content will be assigned.
+ * @param dataptr if it is NULL, no content will be assigned.
+ * @exception It sets "errno" to "EINVAL" if list is empty
+ * or NULL. The function may also fail and set "errno" for
+ * any of the errors specified for the routines "Node_CopyKey",
+ * "Node_CopyData".
 */
 int
-LinkedList_PopBack(linked_list_t*, char**, void**);
+LinkedList_PopBack(linked_list_t* list, char** keyptr, void** dataptr);
 
 /**
  * @brief Removes first node with given key from list.
- * @returns 0 on successful deletion, 1 if such element does not exists, -1 on failure.
- * @exception It sets errno to EINVAL if and only if list or node are NULL.
+ * @returns 0 on successful deletion, 1 if such element
+ * does not exists, -1 on failure.
+ * @exception It sets "errno" to "EINVAL" if list or
+ * node are NULL. The function may also fail and set
+ * "errno" for any of the errors specified for the
+ * routine "Node_CopyKey".
 */
 int
-LinkedList_Remove(linked_list_t*, const char*);
+LinkedList_Remove(linked_list_t* list, const char* key);
 
 /**
  * @brief Checks whether list is empty.
  * @returns 1 if it is empty, 0 if it is not, -1 on failure.
- * @exception It sets errno to EINVAL if and only if list is NULL.
+ * @exception It sets "errno" to "EINVAL" if list is NULL.
 */
 int
 LinkedList_IsEmpty(const linked_list_t*);
 
 /**
  * @brief Checks whether list contains given key.
- * @returns 1 if it contains the key, 0 if it does not, -1 on failure.
- * @exception It sets errno to ENOMEM if and only if needed memory allocation fails.
+ * @returns 1 if it contains the key, 0 if such element
+ * does not exist, -1 on failure.
+ * @exception It sets "errno" for any of the errors
+ * specified for the routine "Node_CopyKey".
 */
 int
 LinkedList_Contains(const linked_list_t*, const char*);

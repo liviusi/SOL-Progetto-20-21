@@ -28,12 +28,14 @@ typedef struct _node node_t;
 
 /**
  * @brief Allocates memory for a new node and creates it with given key and data.
- * @returns Returns new node on success, NULL on failure.
+ * @returns Initialized node struct on success, NULL on failure.
  * @param key cannot be NULL.
  * @param key_size cannot be 0.
  * @param free_data pointer to function used to free node's data. It will be set to
  * free if param is NULL.
- * @exception It sets "errno" for any of the errors specified for the routine "malloc".
+ * @exception It sets errno to EINVAL if any param is not valid.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routine "malloc".
 */
 node_t*
 Node_Create(const char* key, size_t key_size, const void* data,

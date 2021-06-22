@@ -15,10 +15,10 @@
 #ifndef DEBUG
 struct _linked_list
 {
-	node_t* first;
-	node_t* last;
-	unsigned long nelems;
-	void (*free_data) (void*);
+	node_t* first; // pointer to first element in list
+	node_t* last; // pointer to last element in list
+	unsigned long nelems; // number of elements in list
+	void (*free_data) (void*); // pointer to function used to free nodes' data
 };
 #endif
 
@@ -52,7 +52,7 @@ int
 LinkedList_PushFront(linked_list_t* list, const char* key,
 		size_t key_size, const void* data, size_t data_size)
 {
-	if (!list)
+	if (!list || !key || key_size == 0)
 	{
 		errno = EINVAL;
 		return -1;
@@ -109,7 +109,7 @@ LinkedList_PushBack(linked_list_t* list, const char* key,
 }
 
 int
-LinkedList_PopFront(linked_list_t* list, char** key, void** data)
+LinkedList_PopFront(linked_list_t* list, char** keyptr, void** dataptr)
 {
 	if (!list || !(list->nelems)) // list is either empty or null
 	{
@@ -117,15 +117,15 @@ LinkedList_PopFront(linked_list_t* list, char** key, void** data)
 		return -1;
 	}
 	list->nelems--;
-	if ((key != NULL) && (Node_CopyKey(list->first, key) != 0))
+	if ((keyptr != NULL) && (Node_CopyKey(list->first, keyptr) != 0))
 	{
 		if (errno == ENOMEM) return -1;
-		else *key = NULL;
+		else *keyptr = NULL;
 	}
-	if ((data != NULL) && (Node_CopyData(list->first, data) == 0))
+	if ((dataptr != NULL) && (Node_CopyData(list->first, dataptr) == 0))
 	{
 		if (errno == ENOMEM) return -1;
-		else *data = NULL;
+		else *dataptr = NULL;
 	}
 	if (list->nelems == 0)
 	{
@@ -145,7 +145,7 @@ LinkedList_PopFront(linked_list_t* list, char** key, void** data)
 }
 
 int
-LinkedList_PopBack(linked_list_t* list, char** key, void** data)
+LinkedList_PopBack(linked_list_t* list, char** keyptr, void** dataptr)
 {
 	if (!list || !(list->nelems)) // list is either empty or null
 	{
@@ -153,15 +153,15 @@ LinkedList_PopBack(linked_list_t* list, char** key, void** data)
 		return -1;
 	}
 	list->nelems--;
-	if ((key != NULL) && (Node_CopyKey(list->last, key) != 0))
+	if ((keyptr != NULL) && (Node_CopyKey(list->last, keyptr) != 0))
 	{
 		if (errno == ENOMEM) return -1;
-		else *key = NULL;
+		else *keyptr = NULL;
 	}
-	if ((data != NULL) && (Node_CopyData(list->last, data) == 0))
+	if ((dataptr != NULL) && (Node_CopyData(list->last, dataptr) == 0))
 	{
 		if (errno == ENOMEM) return -1;
-		else *data = NULL;
+		else *dataptr = NULL;
 	}
 	if (list->nelems == 0)
 	{
@@ -227,26 +227,22 @@ LinkedList_IsEmpty(const linked_list_t* list)
 int
 LinkedList_Contains(const linked_list_t* list, const char* key)
 {
+	if (!list || !key || !list->first) return 0;
 	const node_t* curr;
 	char* tmp;
 	int err;
-	if (!list || !key) return 0;
-	else
+	for (curr = list->first; curr != NULL; curr = Node_GetNext(curr))
 	{
-
-		for (curr = list->first; curr != NULL; curr = Node_GetNext(curr))
+		err = Node_CopyKey(curr, &tmp);
+		if (err != 0) return -1;
+		if (strcmp(tmp, key) != 0) free(tmp);
+		else
 		{
-			err = Node_CopyKey(curr, &tmp);
-			if (err != 0) return -1;
-			if (strcmp(tmp, key) != 0) free(tmp);
-			else
-			{
-				free(tmp);
-				return 1;
-			}
+			free(tmp);
+			return 1;
 		}
-		return 0;
 	}
+	return 0;
 }
 
 void
