@@ -1,8 +1,13 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
+#include <errno.h>
+#include <string.h>
 #include <config.h>
 #include <server_defines.h>
 #include <storage.h>
+
+#define STRING_SAMPLE "\nLorem ipsum dolor sit amet!!\n"
 
 int main(int argc, char* argv[])
 {
@@ -76,18 +81,34 @@ int main(int argc, char* argv[])
 	assert(err == 0);
 	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/Makefile", 5, NULL);
 	assert(err == 0);
-	Storage_Print(storage);
+	//Storage_Print(storage);
 
 	linked_list_t* list = NULL;
-	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/test.c", O_CREATE|O_LOCK, 3);
+	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/src/data_structures/rwlock.c", O_CREATE|O_LOCK, 3);
 	assert(err == 0);
-	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/test.c", 3, &list);
+	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/src/data_structures/rwlock.c", 3, &list);
 	assert(err == 0);
-	Storage_Print(storage);
-
 	LinkedList_Print(list);
+	LinkedList_Free(list); list = NULL;
 
+	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/includes/wrappers.h", O_CREATE|O_LOCK, 5);
+	assert(err == 0);
+	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/includes/wrappers.h", 5, &list);
+	assert(err == 0);
+	//Storage_Print(storage);
+	LinkedList_Print(list);
+	LinkedList_Free(list); list = NULL;
+	char* string = (char*) malloc(sizeof(char) * 100);
+	strcpy(string, STRING_SAMPLE);
+	string[strlen(STRING_SAMPLE) + 1] = '\0';
+	err = Storage_appendToFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/src/data_structures/rwlock.c", (void*) string, strlen(string) + 1, &list, 3);
+	//fprintf(stderr, "errno = %d\n", errno);
+	assert(err == 1);
+	free(string);
+	//Storage_Print(storage);
+	//LinkedList_Print(list);
 	LinkedList_Free(list);
+
 	Storage_Free(storage);
 	ServerConfig_Free(config);
 }

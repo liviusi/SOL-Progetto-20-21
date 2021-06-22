@@ -39,32 +39,40 @@ typedef struct _storage storage_t;
 /**
 */
 storage_t*
-Storage_Init(size_t, size_t, replacement_algo_t);
+Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t chosen_algo);
 
 /**
 */
 void
-Storage_Print(const storage_t*);
+Storage_Print(const storage_t* storage);
 
 /**
 */
 void
-Storage_Free(storage_t*);
+Storage_Free(storage_t* storage);
 
 /**
 */
 int
-Storage_openFile(storage_t*, const char*, int, int);
+Storage_openFile(storage_t* storage, const char* pathname, int flags, int client);
 
 /**
 */
 int
-Storage_readFile(storage_t*, const char*, void**, size_t*, int);
+Storage_readFile(storage_t* storage, const char* pathname, void** buf,
+			size_t* size, int client);
 
 /**
 */
 int
-Storage_writeFile(storage_t* storage, const char* pathname, int client, linked_list_t** expelled);
+Storage_writeFile(storage_t* storage, const char* pathname, int client,
+			linked_list_t** evicted);
+
+/**
+*/
+int
+Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
+			size_t size, linked_list_t** evicted, int client);
 
 /**
 */
