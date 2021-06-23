@@ -194,65 +194,6 @@ openFile(const char* pathname, int flags)
 		else return -1;
 }
 
-
-int
-closeFile(const char* pathname)
-{
-	int err;
-	char error_string[BUFFERLEN];
-	if (!pathname || strlen(pathname) > MAXPATH)
-	{
-		err = EINVAL;
-		goto failure;
-	}
-
-	if (socket_fd == -1)
-	{
-		err = ENOTCONN;
-		goto failure;
-	}
-
-	/**
-	 * The actual closure will be handled by the server;
-	 * the client will send a buffer requesting it.
-	 * The buffer will follow the following format:
-	 * OPCODE(CLOSE) PATHNAME.
-	*/
-
-	char buffer[BUFFERLEN];
-	int len = snprintf(buffer, BUFFERLEN, "%d %s", CLOSE, pathname);
-	if (writen((long) socket_fd, (void*) buffer, len) == -1)
-	{
-		err = errno;
-		goto failure;
-	}
-
-	memset(buffer, 0, BUFFERLEN);
-	long answer, tmp;
-	bool fatal_error = false;
-	HANDLE_ANSWER(buffer, BUFFERLEN, answer, tmp, fatal_error);
-
-	if (fatal_error) goto fatal;
-
-	PRINT_IF(print_enabled, "closeFile %s : SUCCESS.\n", pathname);
-	return 0;
-
-	failure:
-		strerror_r(err, error_string, BUFFERLEN);
-		PRINT_IF(print_enabled, "closeFile %s : FAILURE. errno = %s.\n", pathname,
-					error_string);
-		errno = err;
-		return -1;
-
-	fatal:
-		strerror_r(err, error_string, BUFFERLEN);
-		PRINT_IF(print_enabled, "closeFile %s : FATAL ERROR. errno = %s.\n", pathname,
-					error_string);
-		errno = err;
-		if (exit_on_fatal_errors) exit(errno);
-		else return -1;
-}
-
 int
 readFile(const char* pathname, void** buf, size_t* size)
 {
@@ -549,6 +490,238 @@ appendToFile(const char* pathname, void* buf, size_t size, const char* dirname)
 		strerror_r(err, error_string, BUFFERLEN);
 		PRINT_IF(print_enabled, "appendToFile %s %s : FATAL ERROR. errno = %s.\n", pathname,
 					dirname, error_string);
+		errno = err;
+		if (exit_on_fatal_errors) exit(errno);
+		else return -1;
+}
+
+int
+lockFile(const char* pathname)
+{
+	int err;
+	char error_string[BUFFERLEN];
+	if (!pathname || strlen(pathname) > MAXPATH)
+	{
+		err = EINVAL;
+		goto failure;
+	}
+
+	if (socket_fd == -1)
+	{
+		err = ENOTCONN;
+		goto failure;
+	}
+
+	/**
+	 * The actual locking will be handled by the server;
+	 * the client will send a buffer requesting it.
+	 * The buffer will follow the following format:
+	 * OPCODE(LOCK) PATHNAME.
+	*/
+
+	char buffer[BUFFERLEN];
+	int len = snprintf(buffer, BUFFERLEN, "%d %s", LOCK, pathname);
+	if (writen((long) socket_fd, (void*) buffer, len) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+
+	memset(buffer, 0, BUFFERLEN);
+	long answer, tmp;
+	bool fatal_error = false;
+	HANDLE_ANSWER(buffer, BUFFERLEN, answer, tmp, fatal_error);
+
+	if (fatal_error) goto fatal;
+
+	PRINT_IF(print_enabled, "lockFile %s : SUCCESS.\n", pathname);
+	return 0;
+
+	failure:
+		strerror_r(err, error_string, BUFFERLEN);
+		PRINT_IF(print_enabled, "lockFile %s : FAILURE. errno = %s.\n", pathname,
+					error_string);
+		errno = err;
+		return -1;
+
+	fatal:
+		strerror_r(err, error_string, BUFFERLEN);
+		PRINT_IF(print_enabled, "lockFile %s : FATAL ERROR. errno = %s.\n", pathname,
+					error_string);
+		errno = err;
+		if (exit_on_fatal_errors) exit(errno);
+		else return -1;
+}
+
+int
+unlockFile(const char* pathname)
+{
+	int err;
+	char error_string[BUFFERLEN];
+	if (!pathname || strlen(pathname) > MAXPATH)
+	{
+		err = EINVAL;
+		goto failure;
+	}
+
+	if (socket_fd == -1)
+	{
+		err = ENOTCONN;
+		goto failure;
+	}
+
+	/**
+	 * The actual unlocking will be handled by the server;
+	 * the client will send a buffer requesting it.
+	 * The buffer will follow the following format:
+	 * OPCODE(LOCK) PATHNAME.
+	*/
+
+	char buffer[BUFFERLEN];
+	int len = snprintf(buffer, BUFFERLEN, "%d %s", UNLOCK, pathname);
+	if (writen((long) socket_fd, (void*) buffer, len) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+
+	memset(buffer, 0, BUFFERLEN);
+	long answer, tmp;
+	bool fatal_error = false;
+	HANDLE_ANSWER(buffer, BUFFERLEN, answer, tmp, fatal_error);
+
+	if (fatal_error) goto fatal;
+
+	PRINT_IF(print_enabled, "unlockFile %s : SUCCESS.\n", pathname);
+	return 0;
+
+	failure:
+		strerror_r(err, error_string, BUFFERLEN);
+		PRINT_IF(print_enabled, "unlockFile %s : FAILURE. errno = %s.\n", pathname,
+					error_string);
+		errno = err;
+		return -1;
+
+	fatal:
+		strerror_r(err, error_string, BUFFERLEN);
+		PRINT_IF(print_enabled, "unlockFile %s : FATAL ERROR. errno = %s.\n", pathname,
+					error_string);
+		errno = err;
+		if (exit_on_fatal_errors) exit(errno);
+		else return -1;
+}
+
+int
+closeFile(const char* pathname)
+{
+	int err;
+	char error_string[BUFFERLEN];
+	if (!pathname || strlen(pathname) > MAXPATH)
+	{
+		err = EINVAL;
+		goto failure;
+	}
+
+	if (socket_fd == -1)
+	{
+		err = ENOTCONN;
+		goto failure;
+	}
+
+	/**
+	 * The actual closure will be handled by the server;
+	 * the client will send a buffer requesting it.
+	 * The buffer will follow the following format:
+	 * OPCODE(CLOSE) PATHNAME.
+	*/
+
+	char buffer[BUFFERLEN];
+	int len = snprintf(buffer, BUFFERLEN, "%d %s", CLOSE, pathname);
+	if (writen((long) socket_fd, (void*) buffer, len) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+
+	memset(buffer, 0, BUFFERLEN);
+	long answer, tmp;
+	bool fatal_error = false;
+	HANDLE_ANSWER(buffer, BUFFERLEN, answer, tmp, fatal_error);
+
+	if (fatal_error) goto fatal;
+
+	PRINT_IF(print_enabled, "closeFile %s : SUCCESS.\n", pathname);
+	return 0;
+
+	failure:
+		strerror_r(err, error_string, BUFFERLEN);
+		PRINT_IF(print_enabled, "closeFile %s : FAILURE. errno = %s.\n", pathname,
+					error_string);
+		errno = err;
+		return -1;
+
+	fatal:
+		strerror_r(err, error_string, BUFFERLEN);
+		PRINT_IF(print_enabled, "closeFile %s : FATAL ERROR. errno = %s.\n", pathname,
+					error_string);
+		errno = err;
+		if (exit_on_fatal_errors) exit(errno);
+		else return -1;
+}
+
+int
+removeFile(const char* pathname)
+{
+	int err;
+	char error_string[BUFFERLEN];
+	if (!pathname || strlen(pathname) > MAXPATH)
+	{
+		err = EINVAL;
+		goto failure;
+	}
+
+	if (socket_fd == -1)
+	{
+		err = ENOTCONN;
+		goto failure;
+	}
+
+	/**
+	 * The actual removal will be handled by the server;
+	 * the client will send a buffer requesting it.
+	 * The buffer will follow the following format:
+	 * OPCODE(CLOSE) PATHNAME.
+	*/
+
+	char buffer[BUFFERLEN];
+	int len = snprintf(buffer, BUFFERLEN, "%d %s", REMOVE, pathname);
+	if (writen((long) socket_fd, (void*) buffer, len) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+
+	memset(buffer, 0, BUFFERLEN);
+	long answer, tmp;
+	bool fatal_error = false;
+	HANDLE_ANSWER(buffer, BUFFERLEN, answer, tmp, fatal_error);
+
+	if (fatal_error) goto fatal;
+
+	PRINT_IF(print_enabled, "removeFile %s : SUCCESS.\n", pathname);
+	return 0;
+
+	failure:
+		strerror_r(err, error_string, BUFFERLEN);
+		PRINT_IF(print_enabled, "removeFile %s : FAILURE. errno = %s.\n", pathname,
+					error_string);
+		errno = err;
+		return -1;
+
+	fatal:
+		strerror_r(err, error_string, BUFFERLEN);
+		PRINT_IF(print_enabled, "removeFile %s : FATAL ERROR. errno = %s.\n", pathname,
+					error_string);
 		errno = err;
 		if (exit_on_fatal_errors) exit(errno);
 		else return -1;
