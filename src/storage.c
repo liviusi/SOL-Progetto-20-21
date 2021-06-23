@@ -39,11 +39,22 @@ typedef struct _stored_file
 
 	// whoever called open on this file with O_CREATE and O_LOCK may call write on this file
 	int potential_writer; // will be set to 0 if there is none
-	rwlock_t* lock; // used for multithreading purposes
-
+	rwlock_t* rwlock; // used for multithreading purposes
+	pthread_mutex_t mutex_locked; // mutex used to wait when calling lockFile
+	pthread_cond_t cond_locked; // condition variable used when waiting on lock to be released
 } stored_file_t;
 
-stored_file_t*
+/**
+ * @brief Function to initialize file in storage.
+ * @param name cannot be NULL.
+ * @returns Initialized data structure on success,
+ * NULL on failure.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * The function may fail and set "errno" for any of the errors
+ * specified for the routines "malloc", "LinkedList_Init",
+ * "RWLock_Init", "pthread_mutex_init", "pthread_cond_init".
+*/
+static stored_file_t*
 StoredFile_Init(const char* name, const void* contents, size_t contents_size)
 {
 	if (!name)
@@ -56,21 +67,28 @@ StoredFile_Init(const char* name, const void* contents, size_t contents_size)
 	void* tmp_contents = NULL;
 	linked_list_t* tmp_called_open = NULL;
 	rwlock_t* tmp_lock = NULL;
-	int err;
+	pthread_mutex_t tmp_mutex;
+	pthread_cond_t tmp_cond;
+	bool cond_initialized = false;
+	int err, errnosave;
 
+	pthread_mutex_init(&tmp_mutex, NULL);
+	err = pthread_cond_init(&tmp_cond, NULL);
+	GOTO_LABEL_IF_NEQ(err, 0, errnosave, init_failure);
+	cond_initialized = true;
 	tmp = (stored_file_t*) malloc(sizeof(stored_file_t));
-	GOTO_LABEL_IF_EQ(tmp, NULL, err, init_failure);
+	GOTO_LABEL_IF_EQ(tmp, NULL, errnosave, init_failure);
 	tmp_name = (char*) malloc(strlen(name) + 1);
-	GOTO_LABEL_IF_EQ(tmp_name, NULL, err, init_failure);
-	if (contents_size != 0)
+	GOTO_LABEL_IF_EQ(tmp_name, NULL, errnosave, init_failure);
+	if (contents_size != 0 && contents)
 	{
 		tmp_contents = (void*) malloc(contents_size);
-		GOTO_LABEL_IF_EQ(tmp_contents, NULL, err, init_failure);
+		GOTO_LABEL_IF_EQ(tmp_contents, NULL, errnosave, init_failure);
 	}
 	tmp_called_open = LinkedList_Init(free);
-	GOTO_LABEL_IF_EQ(tmp_called_open, NULL, err, init_failure);
+	GOTO_LABEL_IF_EQ(tmp_called_open, NULL, errnosave, init_failure);
 	tmp_lock = RWLock_Init();
-	GOTO_LABEL_IF_EQ(tmp_lock, NULL, err, init_failure);
+	GOTO_LABEL_IF_EQ(tmp_lock, NULL, errnosave, init_failure);
 
 	strncpy(tmp_name, name, strlen(name) + 1);
 	memcpy(tmp_contents, contents, contents_size);
@@ -80,21 +98,27 @@ StoredFile_Init(const char* name, const void* contents, size_t contents_size)
 	tmp->lock_owner = 0;
 	tmp->called_open = tmp_called_open;
 	tmp->potential_writer = 0;
-	tmp->lock = tmp_lock;
+	tmp->rwlock = tmp_lock;
+	tmp->mutex_locked = tmp_mutex;
+	tmp->cond_locked = tmp_cond;
 
 	return tmp;
 
 	init_failure:
+		pthread_mutex_destroy(&tmp_mutex);
+		if (cond_initialized) pthread_cond_destroy(&tmp_cond);
 		free(tmp_name);
 		free(tmp_contents);
 		LinkedList_Free(tmp_called_open);
 		RWLock_Free(tmp_lock);
 		free(tmp);
-		errno = err;
+		errno = errnosave;
 		return NULL;
 }
-
-void
+/**
+ * Utility print function.
+*/
+static void
 StoredFile_Print(const stored_file_t* file)
 {
 	printf("\t\tFilename : %s\n", file->name);
@@ -105,12 +129,6 @@ StoredFile_Print(const stored_file_t* file)
 	if (file->contents)
 	{
 		contents = (char*) malloc(sizeof(char) * (file->contents_size+1));
-		if (!contents)
-		{
-			printf("\nFATAL ERROR OCCURRED WHILE PRINTING FILE\n");
-			errno = ENOMEM;
-			exit(errno);
-		}
 		memcpy(contents, file->contents, file->contents_size);
 		contents[file->contents_size] = '\0';
 		printf("\t\tContents : \n%s\n", contents);
@@ -133,11 +151,14 @@ StoredFile_Print(const stored_file_t* file)
 	printf("\t\tPotential writer = %d\n\n", file->potential_writer);
 }
 
-void
+/**
+ * Frees allocated resources.
+*/
+static void
 StoredFile_Free(void* arg)
 {
 	stored_file_t* file = (stored_file_t*) arg;
-	RWLock_Free(file->lock);
+	RWLock_Free(file->rwlock);
 	LinkedList_Free(file->called_open);
 	free(file->name);
 	free(file->contents);
@@ -203,13 +224,24 @@ Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t ch
 		return NULL;
 }
 
-int
+/**
+ * @brief Gets victim name from storage.
+ * @returns 0 on success, -1 on failure.
+ * @param storage cannot be NULL.
+ * @param victim_name cannot be NULL.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routine "LinkedList_PopBack". 
+*/
+static int
 Storage_getVictim(storage_t* storage, char** victim_name)
 {
-	if (!victim_name) return -1;
-	int err = LinkedList_PopBack(storage->sorted_files, victim_name, NULL);
-	if (err == -1) return -1;
-	return 0;
+	if (!victim_name || !storage)
+	{
+		errno = EINVAL;
+		return -1;
+	}
+	return LinkedList_PopBack(storage->sorted_files, victim_name, NULL);
 }
 
 int
@@ -223,12 +255,14 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 
 	int err, exists;
 	stored_file_t* file;
-	char str_client[BUFFERLEN];
+	char str_client[BUFFERLEN]; // used to denote client as a string
 	int len = snprintf(str_client, BUFFERLEN, "%d", client); // converting client to a string
 
 	// acquire mutex over storage
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(storage->lock));
+	// check whether file exists
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
+
 	if ((exists == 1) && (IS_O_CREATE_SET(flags))) // file exists, creation flag is set
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
@@ -243,12 +277,14 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 			errno = ENOSPC;
 			return OP_FAILURE;
 		}
-		else
+		else // add file to storage
 		{
 			storage->files_no++;
 			RETURN_FATAL_IF_EQ(file, NULL, StoredFile_Init(pathname, NULL, 0));
-			if (IS_O_LOCK_SET(flags)) file->lock_owner = client;
-			if (IS_O_LOCK_SET(flags) && IS_O_CREATE_SET(flags)) file->potential_writer = client;
+			if (IS_O_LOCK_SET(flags))
+				file->lock_owner = client; // client owns this file's lock
+			if (IS_O_LOCK_SET(flags) && IS_O_CREATE_SET(flags))
+				file->potential_writer = client; // client can write this file
 			RETURN_FATAL_IF_NEQ(err, 0, LinkedList_PushFront(file->called_open, str_client,
 						len+1, NULL, 0));
 			RETURN_FATAL_IF_EQ(err, -1, HashTable_Insert(storage->files, (void*) pathname,
@@ -268,49 +304,47 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 		// forcing it not to be const as it needs to be edited
 		RETURN_FATAL_IF_EQ(file, NULL, (stored_file_t*)
 					HashTable_GetPointerToData(storage->files, (void*) pathname));
-
-		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->lock));
-
+		// acquire file lock
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->rwlock));
 		// the same client cannot open a file it has already opened
 		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Contains(file->called_open, str_client));
 		if (err == 1) // client has already opened this file
 		{
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 			errno = EBADF;
 			return OP_FAILURE;
 		}
 		else
 		{
-			if (IS_O_LOCK_SET(flags))
+			if (IS_O_LOCK_SET(flags)) // client wants to acquire lock
 			{
-				if (file->lock_owner == 0)
+				if (file->lock_owner == 0) // no client is already holding it
 				{
-					RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
-					RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->lock));
+					RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+					RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
 					file->lock_owner = client;
-					RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
+					RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 				}
-				else // someone already owns this file's lock
+				else // a client already owns this file's lock
 				{
-					RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
+					RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
 					RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
-
 					errno = EACCES;
 					return OP_FAILURE;
 				}
 			}
-			else RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->lock));
+			else RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
 			// add the client to the list of the ones who opened this file
 			RETURN_FATAL_IF_NEQ(err, 0 , LinkedList_PushFront(file->called_open,
 						str_client, len+1, NULL, 0));
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 		}
 
 	}
-	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 
+	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 	return OP_SUCCESS;
 }
 
@@ -324,23 +358,24 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 	}
 
 	int err, exists;
-	char str_client[BUFFERLEN];
+	char str_client[BUFFERLEN]; // used to denote client as a string
 	stored_file_t* file;
-	void* tmp_contents = NULL;
-	size_t tmp_size = 0;
+	void* tmp_contents = NULL; // used to denote file contents
+	size_t tmp_size = 0; // used to denote file size
 	*buf = NULL; *size = 0; // initializing both params to improve readability
 	snprintf(str_client, BUFFERLEN, "%d", client); // convert int client to string
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(storage->lock));
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
+
 	if (exists == 1) // file is inside the storage
 	{
 		RETURN_FATAL_IF_EQ(file, NULL, (stored_file_t*)
 					HashTable_GetPointerToData(storage->files, (void*) pathname));
-
-		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->lock));
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->rwlock));
+		// a client already owns this file's lock
 		if (file->lock_owner != 0 && file->lock_owner != client)
 		{
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 			errno = EACCES;
 			return OP_FAILURE;
@@ -348,28 +383,29 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Contains(file->called_open, str_client));
 		if (err == 0) // file has not been opened by this client
 		{
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 			errno = EACCES;
 			return OP_FAILURE;
 		}
 		else // file has been opened by this client
 		{
+			// file is empty
 			if (file->contents_size == 0 || !file->contents)
 			{
-				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
+				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 				return OP_SUCCESS;
 			}
-			else
+			else // file is not empty
 			{
 				tmp_size = file->contents_size;
 				RETURN_FATAL_IF_EQ(tmp_contents, NULL, malloc(tmp_size));
 				memcpy(tmp_contents, file->contents, tmp_size);
-				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
-				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->lock));
-				file->potential_writer = 0;
-				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
+				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
+				file->potential_writer = 0; // writing this file is not allowed
+				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 
 			}
@@ -381,13 +417,27 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 		errno = EBADF;
 		return OP_FAILURE;
 	}
+	// actual assignment
 	*size = tmp_size;
 	*buf = tmp_contents;
 	return OP_SUCCESS;
 }
 
+/**
+ * @brief Checks whether file is a regular file.
+ * @returns 1 if it is a regular file, 0 if it is not, -1 on failure.
+ * @param pathname cannot be NULL.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routine "stat".
+*/
 int is_regular_file(const char *pathname)
 {
+	if (!pathname)
+	{
+		errno = EINVAL;
+		return -1;
+	}
 	struct stat statbuf;
 	int err = stat(pathname, &statbuf);
 	if (err != 0) return -1;
@@ -404,15 +454,17 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 		errno = EINVAL;
 		return OP_FAILURE;
 	}
+
 	int err, exists;
-	long length, read_length;
-	bool failure = false;
-	char* pathname_contents = NULL;
-	char* victim_name = NULL;
-	FILE* pathname_file;
-	stored_file_t* stored_file = NULL;
-	stored_file_t* tmp = NULL;
-	linked_list_t* tmp_evicted = NULL;
+	long length; // buffer length
+	long read_length; // actual read length
+	bool failure = false; // toggled on if replacement algorithm chooses pathname as a victim
+	char* pathname_contents = NULL; // buffer of contents
+	char* victim_name = NULL; // used to denote victim's name
+	FILE* pathname_file; // used to denote pathname as a FILE*
+	stored_file_t* stored_file = NULL; // used to denote pathname as a file inside storage
+	stored_file_t* tmp = NULL; // used to denote victim as a file inside storage
+	linked_list_t* tmp_evicted = NULL; // list of evicted files
 
 	// must check whether pathname is a regular file
 	err = is_regular_file(pathname);
@@ -434,7 +486,7 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 	err = fseek(pathname_file, 0, SEEK_SET);
 	if (err != 0) return OP_FAILURE;
 
-	// file must not be too big
+	// file must not be bigger than storage's size
 	if (length > storage->max_storage_size)
 	{
 		fclose(pathname_file);
@@ -448,59 +500,65 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 		// +1 for '\0'
 		RETURN_FATAL_IF_EQ(pathname_contents, NULL, (char*) malloc(sizeof(char) * (length + 1)));
 		read_length = fread(pathname_contents, sizeof(char), length, pathname_file);
-		if (read_length != length && ferror(pathname_file))
+		if (read_length != length && ferror(pathname_file)) // fread failed
 		{
 			fclose(pathname_file);
 			errno = EBADE;
 			return OP_FAILURE;
 		}
-		pathname_contents[length] = '\0';
+		pathname_contents[length] = '\0'; // string needs to be null terminated
 	}
 	else pathname_contents = NULL;
 	fclose(pathname_file);
 
+	// as files may be deleted, no readers are allowed on storage
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(storage->lock));
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
+
 	if (exists == 1) // file is inside the storage
 	{
+		// as there can be at most one writer at a time,
+		// no locks need to be acquired over file
 		RETURN_FATAL_IF_EQ(stored_file, NULL, (stored_file_t*)
 					HashTable_GetPointerToData(storage->files, (void*) pathname));
 
-		if (stored_file->potential_writer != client)
+		if (stored_file->potential_writer != client) // client cannot write this file
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
 			errno = EACCES;
 			return OP_FAILURE;
 		}
-
+		// there's no room for this file
+		// start replacement algorithm
 		if (storage->storage_size + length > storage->max_storage_size)
 		{
-			if (evicted) RETURN_FATAL_IF_EQ(tmp_evicted, NULL, LinkedList_Init(NULL));
+			if (evicted) // if a list is specified, save evicted files' data
+				RETURN_FATAL_IF_EQ(tmp_evicted, NULL, LinkedList_Init(NULL));
 			while (!failure)
 			{
 				if (storage->storage_size + length <= storage->max_storage_size) break;
 				RETURN_FATAL_IF_NEQ(err, 0, Storage_getVictim(storage, &victim_name));
 				//fprintf(stderr, "[%d] victim is %s\n", __LINE__, victim_name);
-				if (strcmp(victim_name, pathname) == 0) failure = true;
+				if (strcmp(victim_name, pathname) == 0) // file to be written got evicted
+					failure = true;
 				RETURN_FATAL_IF_EQ(tmp, NULL, (stored_file_t*)
 							HashTable_GetPointerToData(storage->files, (void*) victim_name));
 				if (evicted) RETURN_FATAL_IF_NEQ(err, 0, LinkedList_PushFront(tmp_evicted, victim_name,
 							strlen(victim_name) + 1, tmp->contents, tmp->contents_size));
-				storage->storage_size -= tmp->contents_size;
-				storage->files_no--;
+				storage->storage_size -= tmp->contents_size; // update storage size
+				storage->files_no--; // update number of files
 				RETURN_FATAL_IF_NEQ(err, 0, HashTable_DeleteNode(storage->files, (void*) victim_name));
 				free(victim_name);
 			}
 			if (evicted) *evicted = tmp_evicted;
-			if (failure)
+			if (failure) // file to be written got evicted
 			{
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
 				errno = EIDRM;
 				return OP_FAILURE;
 			}
 		}
-
-		if (pathname_contents)
+		if (pathname_contents) // file is not empty
 		{
 			stored_file->contents_size = length;
 			stored_file->contents = (void*) pathname_contents;
@@ -527,6 +585,7 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 		errno = EINVAL;
 		return OP_FAILURE;
 	}
+
 	int err; // used as a placeholder for functions' return values
 	int exists; // set to 1 if file is inside the storage
 	bool failure = false; // toggled on when the file the operation should be performed on is a victim.
@@ -540,6 +599,7 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 	snprintf(str_client, BUFFERLEN, "%d", client);
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(storage->lock));
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
+
 	if (exists == 1) // file is inside the storage
 	{
 		RETURN_FATAL_IF_EQ(file, NULL, (stored_file_t*)
@@ -593,13 +653,12 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 			}
 		}
 		new_contents = realloc(file->contents, file->contents_size + size);
-		if (!new_contents)
+		if (!new_contents) // realloc failed
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
 			errno = ENOMEM;
 			return OP_FATAL;
 		}
-		// free(file->contents);
 		file->contents = new_contents;
 		memcpy(file->contents + file->contents_size, buf, size);
 		file->contents_size += size;
@@ -615,10 +674,7 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 	}
 	return OP_SUCCESS;
 }
-// solo lockFile fara' uso della mutex
-// da riscrivere
-// i file devono avere una mutex e una condition variable
-// da usare per non avere attesa attiva mentre il lock e' detenuto da un altro client
+
 int
 Storage_lockFile(storage_t* storage, const char* pathname, int client)
 {
@@ -634,19 +690,20 @@ Storage_lockFile(storage_t* storage, const char* pathname, int client)
 	snprintf(str_client, BUFFERLEN, "%d", client);
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(storage->lock));
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
+
 	if (exists == 1) // file is inside the storage
 	{
 		RETURN_FATAL_IF_EQ(file, NULL, (stored_file_t*)
 					HashTable_GetPointerToData(storage->files, (void*) pathname));
 
-		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->lock));
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->rwlock));
 
 		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Contains(file->called_open, str_client));
 		if (err == 1) // file has been opened by client
 		{
 			if (client == file->lock_owner) // client already owns the lock
 			{
-				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
+				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 
 				return OP_SUCCESS;
@@ -655,19 +712,25 @@ Storage_lockFile(storage_t* storage, const char* pathname, int client)
 			// to edit file struct params, lock
 			// needs to be acquired in write mode.
 
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
 
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
 
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->mutex_locked)));
+
+			while (file->lock_owner != 0 && file->lock_owner != client)
+				pthread_cond_wait(&(file->cond_locked), &(file->mutex_locked)); // cannot fail
 			file->lock_owner = client;
 			file->potential_writer = 0;
 
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->mutex_locked)));
+
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 		}
 		else // file has yet to be opened by client
 		{
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 
 			errno = EACCES;
@@ -703,14 +766,14 @@ Storage_unlockFile(storage_t* storage, const char* pathname, int client)
 		RETURN_FATAL_IF_EQ(file, NULL, (stored_file_t*)
 					HashTable_GetPointerToData(storage->files, (void*) pathname));
 
-		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->lock));
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->rwlock));
 
 		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Contains(file->called_open, str_client));
 		if (err == 1) // file has been opened by client
 		{
 			if (client != file->lock_owner) // client does not own the lock.
 			{
-				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
+				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 
 				errno = EACCES;
@@ -719,20 +782,23 @@ Storage_unlockFile(storage_t* storage, const char* pathname, int client)
 
 			// to edit file struct params, lock
 			// needs to be acquired in write mode.
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
 
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
 
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->mutex_locked)));
 			file->lock_owner = 0;
 			file->potential_writer = 0;
+			pthread_cond_signal(&(file->cond_locked));
+			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->mutex_locked)));
 
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 
 		}
 		else // file has yet to be opened by client
 		{
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 
 			errno = EACCES;
@@ -778,24 +844,24 @@ Storage_closeFile(storage_t* storage, const char* pathname, int client)
 					HashTable_GetPointerToData(storage->files, (void*) pathname));
 
 		// file needs to be edited in write mode
-		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->lock));
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->rwlock));
 
 		// checking whether client has opened the file
 		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Contains(file->called_open, str_client));
 		if (err == 0) // file has not been opened by client
 		{
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock((file->lock)));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock((file->rwlock)));
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
 			errno = EACCES;
 			return OP_FAILURE;
 		}
 		else // file has been opened: now closing it
 		{
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock((file->lock)));
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock((file->rwlock)));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
 			RETURN_FATAL_IF_NEQ(err, 0, LinkedList_Remove(file->called_open, str_client));
 			file->potential_writer = 0;
-			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->lock));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 		}
 	}
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));

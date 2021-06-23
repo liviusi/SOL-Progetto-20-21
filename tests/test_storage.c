@@ -35,6 +35,8 @@ int main(int argc, char* argv[])
 
 	err = Storage_openFile(storage, "/home/liviusi/file7", 0, 1);
 	assert(err == 0);
+	err = Storage_openFile(storage, "/home/liviusi/file7", 0, 2);
+	assert(err == 0);
 	err = Storage_openFile(storage, "/home/liviusi/file8", 0, 1);
 	assert(err == 0);
 	//Storage_Print(storage);
@@ -76,21 +78,30 @@ int main(int argc, char* argv[])
 	assert(err == 1);
 	err = Storage_unlockFile(storage, "/home/liviusi/file1", 42);
 	assert(err == 1);
+	err = Storage_lockFile(storage, "/home/liviusi/file7", 1);
+	assert(err == 0);
+	
+	//err = Storage_lockFile(storage, "/home/liviusi/file7", 2);
+	//assert(err == 0);
+	//err = Storage_unlockFile(storage, "/home/liviusi/file7", 1);
+	//assert(err == 0);
+	//Storage_Print(storage);
+
 
 	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/Makefile", O_CREATE|O_LOCK, 5);
 	assert(err == 0);
 	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/Makefile", NULL, 5);
 	assert(err == 0);
-	Storage_Print(storage);
+	//Storage_Print(storage);
 	err = Storage_removeFile(storage, "/home/liviusi/file4", 1);
 	assert(err == 0);
 
 	linked_list_t* list = NULL;
 	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/src/data_structures/rwlock.c", O_CREATE|O_LOCK, 3);
 	assert(err == 0);
-	Storage_Print(storage);
+	//Storage_Print(storage);
 	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/src/data_structures/rwlock.c", &list, 3);
-	LinkedList_Print(list);
+	//LinkedList_Print(list);
 	assert(err == 0);
 	LinkedList_Free(list); list = NULL;
 
