@@ -30,16 +30,16 @@
 typedef struct _stored_file
 {
 	// actual data
-	char* name;
-	void* contents;
-	size_t contents_size;
+	char* name; // file name
+	void* contents; // file contents
+	size_t contents_size; // size of file contents
 
 	int lock_owner; // lock owner's fd; when there is none, it is set to 0.
 	linked_list_t* called_open; // list of fds which called open on this file
 
 	// whoever called open on this file with O_CREATE and O_LOCK may call write on this file
 	int potential_writer; // will be set to 0 if there is none
-	rwlock_t* lock;
+	rwlock_t* lock; // used for multithreading purposes
 
 } stored_file_t;
 
@@ -147,16 +147,16 @@ StoredFile_Free(void* arg)
 #ifndef DEBUG
 struct _storage
 {
-	hashtable_t* files;
+	hashtable_t* files; // table of files in storage
 	replacement_algo_t algorithm; // right now only FIFO is to be supported.
-	linked_list_t* sorted_files;
+	linked_list_t* sorted_files; // files sorted following replacement policy (sorting) method
 
-	size_t max_files_no;
-	size_t max_storage_size;
-	size_t files_no;
-	size_t storage_size;
+	size_t max_files_no; // maximum number of storeable files
+	size_t max_storage_size; // maximum storage size
+	size_t files_no; // current number of files
+	size_t storage_size; // current storage size
 
-	rwlock_t* lock;
+	rwlock_t* lock; // used for multithreading purposes
 };
 #endif
 
@@ -212,43 +212,6 @@ Storage_getVictim(storage_t* storage, char** victim_name)
 	return 0;
 }
 
-#ifdef DEBUG
-void
-Storage_Print(const storage_t* storage)
-{
-	printf("STORAGE DETAILS\n");
-	printf("\tCurrent files : %lu, Maximum : %lu\n",
-			storage->files_no, storage->max_files_no);
-	printf("\tCurrent size : %lu, Maximum : %lu\n",
-			storage->storage_size, storage->max_storage_size);
-	printf("\tSorted files:\n");
-	LinkedList_Print(storage->sorted_files);
-	const node_t* curr;
-	const stored_file_t* tmp;
-	for (size_t i = 0; i < storage->max_files_no; i++)
-	{
-		printf("\n\tBucket no. %lu\n", i);
-		curr = LinkedList_GetFirst((storage->files)->buckets[i]);
-		if (!curr) printf("\t\tEMPTY\n");
-		for (; curr != NULL; curr = Node_GetNext(curr))
-		{
-			tmp = (const stored_file_t*) Node_GetData(curr);
-			StoredFile_Print(tmp);
-		}
-		printf("\n");
-	}
-	return;
-}
-
-#else
-void
-Storage_Print(const storage_t* storage)
-{
-	return;
-}
-
-#endif
-
 int
 Storage_openFile(storage_t* storage, const char* pathname, int flags, int client)
 {
@@ -269,8 +232,7 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 	if ((exists == 1) && (IS_O_CREATE_SET(flags))) // file exists, creation flag is set
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
-
-		errno = EPERM;
+		errno = EEXIST;
 		return OP_FAILURE;
 	}
 	if (exists == 0) // file is not inside the storage
@@ -278,7 +240,7 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 		if (storage->files_no == storage->max_files_no)
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
-			errno = EPERM;
+			errno = ENOSPC;
 			return OP_FAILURE;
 		}
 		else
@@ -315,7 +277,6 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
-
 			errno = EBADF;
 			return OP_FAILURE;
 		}
@@ -381,7 +342,6 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
-
 			errno = EACCES;
 			return OP_FAILURE;
 		}
@@ -399,13 +359,12 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 			{
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
-
 				return OP_SUCCESS;
 			}
 			else
 			{
 				tmp_size = file->contents_size;
-				tmp_contents = malloc(tmp_size);
+				RETURN_FATAL_IF_EQ(tmp_contents, NULL, malloc(tmp_size));
 				memcpy(tmp_contents, file->contents, tmp_size);
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->lock));
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->lock));
@@ -419,7 +378,6 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 	else // file is not inside the storage
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
-
 		errno = EBADF;
 		return OP_FAILURE;
 	}
@@ -492,7 +450,6 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 		read_length = fread(pathname_contents, sizeof(char), length, pathname_file);
 		if (read_length != length && ferror(pathname_file))
 		{
-
 			fclose(pathname_file);
 			errno = EBADE;
 			return OP_FAILURE;
@@ -511,7 +468,6 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 
 		if (stored_file->potential_writer != client)
 		{
-
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
 			errno = EACCES;
 			return OP_FAILURE;
@@ -539,7 +495,7 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 			if (failure)
 			{
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
-				errno = EBADE;
+				errno = EIDRM;
 				return OP_FAILURE;
 			}
 		}
@@ -632,7 +588,7 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 			if (failure)
 			{
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
-				errno = EBADE;
+				errno = EIDRM;
 				return OP_FAILURE;
 			}
 		}
@@ -659,7 +615,10 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 	}
 	return OP_SUCCESS;
 }
-
+// solo lockFile fara' uso della mutex
+// da riscrivere
+// i file devono avere una mutex e una condition variable
+// da usare per non avere attesa attiva mentre il lock e' detenuto da un altro client
 int
 Storage_lockFile(storage_t* storage, const char* pathname, int client)
 {
@@ -843,16 +802,6 @@ Storage_closeFile(storage_t* storage, const char* pathname, int client)
 	return OP_SUCCESS;
 }
 
-void
-Storage_Free(storage_t* storage)
-{
-	if (!storage) return;
-	RWLock_Free(storage->lock);
-	LinkedList_Free(storage->sorted_files);
-	HashTable_Free(storage->files);
-	free(storage);
-}
-
 int
 Storage_removeFile(storage_t* storage, const char* pathname, int client)
 {
@@ -900,4 +849,50 @@ Storage_removeFile(storage_t* storage, const char* pathname, int client)
 		return OP_FAILURE;
 	}
 	return OP_SUCCESS;
+}
+
+
+#ifdef DEBUG
+void
+Storage_Print(const storage_t* storage)
+{
+	printf("STORAGE DETAILS\n");
+	printf("\tCurrent files : %lu, Maximum : %lu\n",
+			storage->files_no, storage->max_files_no);
+	printf("\tCurrent size : %lu, Maximum : %lu\n",
+			storage->storage_size, storage->max_storage_size);
+	printf("\tSorted files:\n");
+	LinkedList_Print(storage->sorted_files);
+	const node_t* curr;
+	const stored_file_t* tmp;
+	for (size_t i = 0; i < storage->max_files_no; i++)
+	{
+		printf("\n\tBucket no. %lu\n", i);
+		curr = LinkedList_GetFirst((storage->files)->buckets[i]);
+		if (!curr) printf("\t\tEMPTY\n");
+		for (; curr != NULL; curr = Node_GetNext(curr))
+		{
+			tmp = (const stored_file_t*) Node_GetData(curr);
+			StoredFile_Print(tmp);
+		}
+		printf("\n");
+	}
+	return;
+}
+#else
+void
+Storage_Print(const storage_t* storage)
+{
+	return;
+}
+#endif
+
+void
+Storage_Free(storage_t* storage)
+{
+	if (!storage) return;
+	RWLock_Free(storage->lock);
+	LinkedList_Free(storage->sorted_files);
+	HashTable_Free(storage->files);
+	free(storage);
 }
