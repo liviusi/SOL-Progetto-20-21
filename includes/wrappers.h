@@ -2,6 +2,7 @@
 #define _WRAPPERS_H_
 
 #include <server_defines.h>
+#include <stdarg.h>
 
 /**
  * @brief Returns fatal error if called function output value is not equal to expected value.
@@ -35,21 +36,41 @@
  * @param errnosave will be used to store errno value
 */
 #define GOTO_LABEL_IF_NEQ(variable, value, errnosave, label) \
-if (variable != value) \
-{ \
-	errnosave = errno; \
-	goto label; \
-}
+	if (variable != value) \
+	{ \
+		errnosave = errno; \
+		goto label; \
+	}
 
 /**
  * @brief Goes to label if variable is equal to value.
  * @param errnosave will be used to store errno value
 */
 #define GOTO_LABEL_IF_EQ(variable, value, errnosave, label) \
-if (variable == value) \
-{ \
-	errnosave = errno; \
-	goto label; \
-}
+	if (variable == value) \
+	{ \
+		errnosave = errno; \
+		goto label; \
+	}
+
+/**
+ * @brief Prints to stdout if condition is true.
+ * @param flag condition to be evaluated
+*/
+#define PRINT_IF(flag, ...) \
+	if (flag) fprintf(stdout, __VA_ARGS__);
+
+#define READN_NUMBER(fd, buffer, bufferlen, number, err, label) \
+	memset(buffer, 0, bufferlen); \
+	if (readn(fd, (void*) buffer, bufferlen) == -1) \
+	{ \
+		err = errno; \
+		goto label; \
+	} \
+	if (isNumber(buffer, &number) != 0) \
+	{ \
+		err = EBADMSG; \
+		goto label; \
+	}
 
 #endif

@@ -3,21 +3,42 @@
  * @author Giacomo Trapani.
 */
 
-#define _DEFAULT_SOURCE
-
 #ifndef _SERVER_INTERFACE_H_
 #define _SERVER_INTERFACE_H_
 
-int
-openConnection(const char*, int, const struct timespec);
+#include <sys/time.h>
 
-int
-closeConnection(const char*);
+extern bool print_enabled;
+extern bool exit_on_fatal_errors;
 
+/**
+*/
 int
-openFile(const char*, int);
+openConnection(const char* sockname, int msec, const struct timespec abstime);
 
+/**
+*/
 int
-closeFile(const char*);
+closeConnection(const char* sockname);
+
+/**
+*/
+int
+openFile(const char* pathname, int flags);
+
+/**
+*/
+int
+closeFile(const char* pathname);
+
+/**
+*/
+int
+readFile(const char* pathname, void** buf, size_t* size);
+
+/**
+*/
+int
+writeFile(const char* pathname, const char* dirname);
 
 #endif
