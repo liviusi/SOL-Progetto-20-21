@@ -28,9 +28,27 @@
  * @param expected_value value returned by function_call in case of success
  * @param function_call actual function call
 */
-#define EXIT_IF_NEQ(variable, expected_value, function_call) \
-	if ((variable = function_call) != expected_value) exit(EXIT_FAILURE);
+#define EXIT_IF_NEQ(variable, expected_value, function_call, function_name) \
+	if ((variable = function_call) != expected_value) \
+	{ \
+		fprintf(stderr, "Fatal error occurred at line %d\n", __LINE__); \
+		perror(#function_name); \
+		exit(EXIT_FAILURE); \
+	}
 
+/**
+ * @brief Exits with EXIT_FAILURE if called function output value is equal to expected value.
+ * @param variable will be set to function_call output value
+ * @param expected_value value returned by function_call in case of success
+ * @param function_call actual function call
+*/
+#define EXIT_IF_EQ(variable, expected_value, function_call, function_name) \
+	if ((variable = function_call) == expected_value) \
+	{ \
+		fprintf(stderr, "Fatal error occurred at line %d\n", __LINE__); \
+		perror(#function_name); \
+		exit(EXIT_FAILURE); \
+	}
 /**
  * @brief Goes to label if variable is not equal to value.
  * @param errnosave will be used to store errno value
@@ -72,5 +90,7 @@
 		err = EBADMSG; \
 		goto label; \
 	}
+
+#define MAX(a, b) ((a >= b) ? (a) : (b))
 
 #endif
