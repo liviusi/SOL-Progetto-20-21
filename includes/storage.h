@@ -142,30 +142,68 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
  * @brief Handles file locking.
  * @returns 0 on success, 1 on failure, 2 on fatal errors.
  * @param storage cannot be NULL.
- * @param pathname cannot be NULL and must be a regular file.
+ * @param pathname cannot be NULL.
  * @exception The function may fail and set "errno" for any of the errors
  * specified for the routines "RWLock_ReadLock", "RWLock_ReadUnlock",
  * "RWLock_WriteLock", "RWLock_WriteUnlock", "HashTable_Find",
- * "HashTable_GetPointerToData", "LinkedList_Contains" which are all
- * considered fatal errors.
+ * "HashTable_GetPointerToData", "LinkedList_Contains",
+ * "pthread_mutex_lock", "pthread_mutex_unlock" which are
+ * all considered fatal errors.
  * Non-fatal failures may happen because:
  *  	- any param is not valid (sets "errno" to "EINVAL");
  *  	- client has yet to open this file (sets "errno" to "EACCES");
+ *   	- file is not inside the storage (sets "errno" to "EBADF").
 */
 int
 Storage_lockFile(storage_t* storage, const char* pathname, int client);
 
 /**
+ * @brief Handles file unlocking.
+ * @returns 0 on success, 1 on failure, 2 on fatal errors.
+ * @exception The function may fail and set "errno" for any of the errors
+ * specified for the routines "RWLock_ReadLock", "RWLock_ReadUnlock",
+ * "RWLock_WriteLock", "RWLock_WriteUnlock", "HashTable_Find",
+ * "HashTable_GetPointerToData", "LinkedList_Contains",
+ * "pthread_mutex_lock", "pthread_mutex_unlock" which are
+ * all considered fatal errors.
+ * Non-fatal failures may happen because:
+ *  	- any param is not valid (sets "errno" to "EINVAL");
+ *  	- client has yet to open this file (sets "errno" to "EACCES");
+ *  	- another client owns this file's lock (sets "errno" to "EACCES");
+ *   	- file is not inside the storage (sets "errno" to "EBADF").
 */
 int
 Storage_unlockFile(storage_t* storage, const char* pathname, int client);
 
 /**
+ * @brief Handles file closure.
+ * @returns 0 on success, 1 on failure, 2 on fatal errors.
+ * @exception The function may fail and set "errno" for any of the errors
+ * specified for the routines "RWLock_ReadLock", "RWLock_ReadUnlock",
+ * "RWLock_WriteLock", "RWLock_WriteUnlock", "HashTable_Find",
+ * "HashTable_GetPointerToData", "LinkedList_Contains",
+ * "LinkedList_Remove" which are all considered fatal errors.
+ * Non-fatal failures may happen because:
+ *  	- any param is not valid (sets "errno" to "EINVAL");
+ *  	- client has yet to open this file (sets "errno" to "EACCES");
+ *   	- file is not inside the storage (sets "errno" to "EBADF").
 */
 int
 Storage_closeFile(storage_t* storage, const char* pathname, int client);
 
 /**
+ * @brief Handles file removal.
+ * @returns 0 on success, 1 on failure, 2 on fatal errors.
+ * @exception The function may fail and set "errno" for any of the errors
+ * specified for the routines "RWLock_ReadLock", "RWLock_ReadUnlock",
+ * "RWLock_WriteLock", "RWLock_WriteUnlock", "HashTable_Find",
+ * "HashTable_GetPointerToData", "HashTable_DeleteNode",
+ * "LinkedList_Contains", "LinkedList_Remove".
+ * Non-fatal failures may happen because:
+ *  	- any param is not valid (sets "errno" to "EINVAL");
+ *  	- client has yet to open this file (sets "errno" to "EACCES");
+ *   	- client has not locked this file (sets "errno" to "EACCES");
+ *   	- file is not inside the storage (sets "errno" to "EBADF").
 */
 int
 Storage_removeFile(storage_t* storage, const char* pathname, int client);
