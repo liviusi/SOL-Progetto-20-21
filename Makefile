@@ -9,7 +9,7 @@ SRC_DIR := ./src
 TEST_DIR := ./tests
 HEADERS_DIR = ./includes/
 
-TARGETS = test-config test-node test-linked-list test-hashtable test-storage
+TARGETS = test-config test-node test-linked-list test-hashtable test-storage server
 
 OBJS-NODE = obj/node.o obj/test_node.o
 OBJS-LINKEDLIST = obj/node.o obj/linked_list.o obj/test_linked_list.o
@@ -17,6 +17,7 @@ OBJS-HASHTABLE = obj/node.o obj/linked_list.o obj/hashtable.o obj/test_hashtable
 OBJS-RWLOCK = obj/rwlock.o obj/test_rwlock.o
 OBJS-CONFIG = obj/config.o obj/test_config.o
 OBJS-STORAGE = obj/node.o obj/linked_list.o obj/hashtable.o obj/rwlock.o obj/config.o obj/storage.o obj/test_storage.o
+OBJS-SERVER = obj/node.o obj/linked_list.o obj/hashtable.o obj/rwlock.o obj/config.o obj/storage.o obj/bounded_buffer.o obj/server.o
 
 obj/node.o:
 	$(CC) $(CFLAGS) $(INCLUDES) -c src/data_structures/node.c $(LIBS)
@@ -83,6 +84,17 @@ obj/test_storage.o:
 
 test-storage: clean $(OBJS-STORAGE)
 	$(CC) $(CFLAGS) -o $(BUILD_DIR)/test-storage $(OBJS-STORAGE) $(LIBS)
+
+obj/bounded_buffer.o:
+	$(CC) $(CFLAGS) $(INCLUDES) -c src/data_structures/bounded_buffer.c $(LIBS)
+	@mv bounded_buffer.o $(OBJ_DIR)/bounded_buffer.o
+
+obj/server.o:
+	$(CC) $(CFLAGS) $(INCLUDES) -c src/server.c $(LIBS)
+	@mv server.o $(OBJ_DIR)/server.o
+
+server: clean $(OBJS-SERVER)
+	$(CC) $(CFLAGS) -o $(BUILD_DIR)/server $(OBJS-SERVER) $(LIBS)
 
 .PHONY: clean cleanall all
 all: $(TARGETS)
