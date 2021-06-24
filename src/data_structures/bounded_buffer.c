@@ -1,0 +1,125 @@
+/**
+ * @brief
+ * @author Giacomo Trapani.
+*/
+
+#include <errno.h>
+#include <stdbool.h>
+#include <string.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+#include <wrappers.h>
+#include <linked_list.h>
+#include <bounded_buffer.h>
+
+
+struct _bounded_buffer
+{
+	size_t capacity;
+	linked_list_t* elems;
+	pthread_mutex_t mutex;
+	pthread_cond_t full;
+	pthread_cond_t empty;
+};
+
+bounded_buffer_t*
+BoundedBuffer_Init(size_t capacity)
+{
+	if (capacity == 0)
+	{
+		errno = EINVAL;
+		return NULL;
+	}
+	int err, errnosave;
+	linked_list_t* elems = NULL;
+	pthread_mutex_t mutex;
+	pthread_cond_t full;
+	pthread_cond_t empty;
+	bounded_buffer_t* tmp = NULL;
+	bool full_initialized = false, empty_initialized = false;
+
+	err = pthread_mutex_init(&mutex, NULL);
+	err = pthread_cond_init(&full, NULL);
+	GOTO_LABEL_IF_NEQ(err, 0, errnosave, failure);
+	full_initialized = true;
+	err = pthread_cond_init(&empty, NULL);
+	GOTO_LABEL_IF_NEQ(err, 0, errnosave, failure);
+	empty_initialized = true;
+	elems = LinkedList_Init(NULL);
+	GOTO_LABEL_IF_EQ(elems, NULL, errnosave, failure);
+	tmp = (bounded_buffer_t*) malloc(sizeof(bounded_buffer_t));
+	GOTO_LABEL_IF_EQ(tmp, NULL, errnosave, failure);
+
+	tmp->capacity = capacity;
+	tmp->mutex = mutex;
+
+	failure:
+		pthread_mutex_destroy(&mutex);
+		if (full_initialized) pthread_cond_destroy(&full);
+		if (empty_initialized) pthread_cond_destroy(&full);
+		LinkedList_Free(elems);
+		errno = errnosave;
+		return NULL;
+}
+
+int
+BoundedBuffer_Enqueue(bounded_buffer_t* buffer, const char* data)
+{
+	if (!buffer || !data)
+	{
+		errno = EINVAL;
+		return -1;
+	}
+	int err;
+
+	err = pthread_mutex_lock(&(buffer->mutex));
+	if (err != 0) return -1;
+	while (buffer->capacity == LinkedList_GetNumberOfElements(buffer->elems))
+		pthread_cond_wait(&(buffer->full), &(buffer->mutex));
+	err = LinkedList_PushBack(buffer->elems, data, strlen(data) + 1, NULL, 0);
+	if (err != 0) return -1;
+	if (LinkedList_GetNumberOfElements(buffer->elems) == 1)
+		pthread_cond_broadcast(&(buffer->empty));
+	err = pthread_mutex_unlock(&(buffer->mutex));
+	if (err != 0) return -1;
+
+	return 0;
+}
+
+int
+BoundedBuffer_Dequeue(bounded_buffer_t* buffer, char** dataptr)
+{
+	if (!buffer)
+	{
+		errno = EINVAL;
+		return -1;
+	}
+	int err;
+	char* tmp = NULL;
+
+	err = pthread_mutex_lock(&(buffer->mutex));
+	if (err != 0) return -1;
+	while (LinkedList_GetNumberOfElements(buffer->elems) == 0)
+		pthread_cond_wait(&(buffer->empty), &(buffer->mutex));
+	err = LinkedList_PopFront(buffer->elems, &tmp, NULL);
+	if (err != 0) return -1;
+	if (LinkedList_GetNumberOfElements(buffer->elems) == (buffer->capacity - 1))
+		pthread_cond_broadcast(&(buffer->full));
+	err = pthread_mutex_unlock(&(buffer->mutex));
+	if (err != 0) return -1;
+
+	if (dataptr) *dataptr = tmp;
+	return 0;
+}
+
+void
+BoundedBuffer_Free(bounded_buffer_t* buffer)
+{
+	if (!buffer) return;
+	pthread_mutex_destroy(&(buffer->mutex));
+	pthread_cond_destroy(&(buffer->empty));
+	pthread_cond_destroy(&(buffer->full));
+	LinkedList_Free(buffer->elems);
+	free(buffer);
+}

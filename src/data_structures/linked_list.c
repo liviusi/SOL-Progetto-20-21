@@ -50,6 +50,13 @@ LinkedList_GetLast(const linked_list_t* list)
 	return list->last;
 }
 
+unsigned long
+LinkedList_GetNumberOfElements(const linked_list_t* list)
+{
+	if (!list) return 0;
+	return list->nelems;
+}
+
 int
 LinkedList_PushFront(linked_list_t* list, const char* key,
 		size_t key_size, const void* data, size_t data_size)

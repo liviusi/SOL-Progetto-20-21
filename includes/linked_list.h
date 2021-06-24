@@ -42,12 +42,18 @@ const node_t*
 LinkedList_GetFirst(const linked_list_t* list);
 
 /**
- * @brief Gets for last element of linked list.
+ * @brief Gets last element of linked list.
  * @returns Pointer to last element of the list.
  * NULL is returned if list is empty or NULL.
 */
 const node_t*
 LinkedList_GetLast(const linked_list_t* list);
+
+/**
+ * @brief Gets number of elements in linked list.
+*/
+unsigned long
+LinkedList_GetNumberOfElements(const linked_list_t* list);
 
 /**
  * @brief Creates and pushes node with given parameters to
