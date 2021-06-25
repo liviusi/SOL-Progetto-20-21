@@ -52,7 +52,12 @@ BoundedBuffer_Init(size_t capacity)
 	GOTO_LABEL_IF_EQ(tmp, NULL, errnosave, failure);
 
 	tmp->capacity = capacity;
+	tmp->elems = elems;
 	tmp->mutex = mutex;
+	tmp->full = full;
+	tmp->empty = empty;
+
+	return tmp;
 
 	failure:
 		pthread_mutex_destroy(&mutex);
