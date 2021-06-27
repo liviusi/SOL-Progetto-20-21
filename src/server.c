@@ -80,7 +80,8 @@ struct workers_args
 	int pipe_output_channel;
 };
 
-int main(int argc, char* argv[])
+int
+main(int argc, char* argv[])
 {
 	if (argc != 2)
 	{
@@ -289,7 +290,8 @@ int main(int argc, char* argv[])
  * @returns NULL.
  * 
 */
-static void* worker_routine(void* arg)
+static void*
+worker_routine(void* arg)
 {
 	struct workers_args* workers_args = (struct workers_args*) arg;
 	bounded_buffer_t* tasks = workers_args->tasks;
@@ -313,8 +315,8 @@ static void* worker_routine(void* arg)
 	void* append_buf = NULL; // buffer used for append operation
 	size_t append_size = 0; // size of append_buf
 	int flags = 0; // used to denote flags for operations on storage
-	char* evicted_file_name = NULL;
-	void* evicted_file_content = NULL;
+	char* evicted_file_name = NULL; // name of evicted file
+	void* evicted_file_content = NULL; // content of evicted file
 	while(1)
 	{
 		// reset task string
@@ -480,7 +482,8 @@ static void* worker_routine(void* arg)
 /**
  * @brief Signal handler.
 */
-void signal_handler(int signum)
+void
+signal_handler(int signum)
 {
 	switch (signum)
 	{
