@@ -16,7 +16,7 @@
 
 #define OP_SUCCESS 0
 #define OP_FAILURE 1
-#define OP_FATAL -1
+#define OP_FATAL 2
 #define FILE_EXPELLED 2
 #define FILE_NOT_EXPELLED -2
 

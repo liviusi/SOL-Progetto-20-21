@@ -4,6 +4,7 @@
 */
 
 #include <errno.h>
+#include <math.h>
 #include <time.h>
 #include <unistd.h>
 #include <string.h>
@@ -20,7 +21,7 @@
 #include <wrappers.h>
 
 #define MAXPATH 128
-#define BUFFERLEN 256
+#define BUFFERLEN 2048
 
 #define HANDLE_ANSWER(buffer, bufferlen, answer, tmp, fatal_error) \
 	READN_NUMBER((long) socket_fd, (void*) buffer, bufferlen, answer, err, failure); \
@@ -38,6 +39,14 @@
 		case OP_SUCCESS: \
 			break; \
 	}
+
+#define GET_MESSAGE_SIZE(dest, pathname, buffer, buffer_size, dirname) \
+	dest = 0; \
+	dest += 2; \
+	if (pathname) dest += strlen(pathname) + 1; \
+	if (buffer) dest += buffer_size + 1; \
+	dest += (size_t) snprintf(0, 0, "%d", buffer_size) + 1;\
+	if (dirname) dest += strlen(dirname); \
 
 
 static int socket_fd = -1;
@@ -404,7 +413,10 @@ appendToFile(const char* pathname, void* buf, size_t size, const char* dirname)
 {
 	int err;
 	char error_string[BUFFERLEN];
-	if (!pathname || strlen(pathname) > MAXPATH)
+	int len;
+	GET_MESSAGE_SIZE(len, pathname, buf, size, dirname);
+	if (!pathname || strlen(pathname) > MAXPATH ||
+				len >= BUFFERLEN)
 	{
 		err = EINVAL;
 		goto failure;
@@ -424,7 +436,6 @@ appendToFile(const char* pathname, void* buf, size_t size, const char* dirname)
 	*/
 
 	char buffer[BUFFERLEN];
-	int len;
 	if (dirname) 
 		len = snprintf(buffer, BUFFERLEN, "%d %s %s %lu %s", APPEND, pathname, (char*) buf, size, dirname);
 	else
