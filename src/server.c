@@ -27,6 +27,7 @@
 #define MAXTASKS 4096
 
 #define TERMINATE_WORKER 0 // used to send a termination message
+#define CLIENT_LEFT "0"
 
 #define HANDLE_ANSWER(answer, errnocopy, fd, buffer, bufferlen) \
 	errnocopy = errno; \
@@ -48,10 +49,26 @@
 	{ \
 		fprintf(stderr, "Fatal error occurred inside storage.\n"); \
 		terminate = 1; \
-	} \
+	}
+
+#define SEND_EVICTED_FILES(tmp, fd, mutex, evicted, name, content, buffer, bufferlen) \
+	if (evicted) \
+	{ \
+		while (LinkedList_IsEmpty(evicted) == 0) \
+		{ \
+			EXIT_IF_NEQ(tmp, 0, pthread_mutex_lock(&mutex), pthread_mutex_lock); \
+			EXIT_IF_EQ(tmp, -1, LinkedList_PopFront(evicted, &name, &content), LinkedList_PopFront); \
+			EXIT_IF_EQ(tmp, -1, writen((long) fd_ready, (void*) name, strlen(name) + 1), writen); \
+			EXIT_IF_EQ(tmp, -1, writen((long) fd_ready, content, strlen((char*) content) + 1), writen); \
+			EXIT_IF_NEQ(tmp, 0, pthread_mutex_unlock(&mutex), pthread_mutex_unlock); \
+			free(name); \
+			free(content); \
+		} \
+	}
 
 volatile sig_atomic_t terminate = 0;
 volatile sig_atomic_t no_more_clients = 0;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void* worker_routine(void*);
 void signal_handler(int);
@@ -296,6 +313,8 @@ static void* worker_routine(void* arg)
 	void* append_buf = NULL; // buffer used for append operation
 	size_t append_size = 0; // size of append_buf
 	int flags = 0; // used to denote flags for operations on storage
+	char* evicted_file_name = NULL;
+	void* evicted_file_content = NULL;
 	while(1)
 	{
 		// reset task string
@@ -330,7 +349,7 @@ static void* worker_routine(void* arg)
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%d", &flags), sscanf);
 				err = Storage_openFile(storage, pathname, flags, fd_ready);
 				// handle answer
-				HANDLE_ANSWER( err, errnocopy, fd_ready, request, REQUESTLEN);
+				HANDLE_ANSWER(err, errnocopy, fd_ready, request, REQUESTLEN);
 				break;
 
 			case CLOSE:
@@ -340,7 +359,7 @@ static void* worker_routine(void* arg)
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_closeFile(storage, pathname, fd_ready);
 				// handle answer
-				HANDLE_ANSWER( err, errnocopy, fd_ready, request, REQUESTLEN);
+				HANDLE_ANSWER(err, errnocopy, fd_ready, request, REQUESTLEN);
 				break;
 
 			case READ:
@@ -360,7 +379,7 @@ static void* worker_routine(void* arg)
 				else 
 					err = Storage_readFile(storage, pathname, NULL, NULL, fd_ready);
 				// handle answer
-				HANDLE_ANSWER( err, errnocopy, fd_ready, request, REQUESTLEN);
+				HANDLE_ANSWER(err, errnocopy, fd_ready, request, REQUESTLEN);
 				// should somehow send read file
 				break;
 
@@ -377,8 +396,10 @@ static void* worker_routine(void* arg)
 				else
 					err = Storage_writeFile(storage, pathname, &evicted, fd_ready);
 				// handle answer
-				HANDLE_ANSWER( err, errnocopy, fd_ready, request, REQUESTLEN);
-				// should somehow send evicted files
+				HANDLE_ANSWER(err, errnocopy, fd_ready, request, REQUESTLEN);
+				// send evicted files
+				SEND_EVICTED_FILES(err, fd_ready, mutex, evicted, evicted_file_name,
+							evicted_file_content, request, REQUESTLEN);
 				break;
 
 			case APPEND:
@@ -404,8 +425,10 @@ static void* worker_routine(void* arg)
 					err = Storage_appendToFile(storage, pathname, append_buf,
 								append_size, &evicted, fd_ready);
 				// handle answer
-				HANDLE_ANSWER( err, errnocopy, fd_ready, request, REQUESTLEN);
-				// should somehow send evicted files
+				HANDLE_ANSWER(err, errnocopy, fd_ready, request, REQUESTLEN);
+				// send evicted files
+				SEND_EVICTED_FILES(err, fd_ready, mutex, evicted, evicted_file_name,
+							evicted_file_content, request, REQUESTLEN);
 				break;
 
 			case READ_N:
@@ -418,7 +441,7 @@ static void* worker_routine(void* arg)
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_lockFile(storage, pathname, fd_ready);
 				// handle answer
-				HANDLE_ANSWER( err, errnocopy, fd_ready, request, REQUESTLEN);
+				HANDLE_ANSWER(err, errnocopy, fd_ready, request, REQUESTLEN);
 				break;
 
 			case UNLOCK:
@@ -428,7 +451,7 @@ static void* worker_routine(void* arg)
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_unlockFile(storage, pathname, fd_ready);
 				// handle answer
-				HANDLE_ANSWER( err, errnocopy, fd_ready, request, REQUESTLEN);
+				HANDLE_ANSWER(err, errnocopy, fd_ready, request, REQUESTLEN);
 				break;
 
 			case REMOVE:
@@ -438,10 +461,13 @@ static void* worker_routine(void* arg)
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_removeFile(storage, pathname, fd_ready);
 				// handle answer
-				HANDLE_ANSWER( err, errnocopy, fd_ready, request, REQUESTLEN);
+				HANDLE_ANSWER(err, errnocopy, fd_ready, request, REQUESTLEN);
 				break;
 
-			default:
+			case TERMINATE:
+				EXIT_IF_EQ(err, -1, close(fd_ready), close);
+				EXIT_IF_EQ(err, -1, writen(pipe_output_channel, CLIENT_LEFT,
+							PIPEBUFFERLEN), writen);
 				break;
 		}
 		

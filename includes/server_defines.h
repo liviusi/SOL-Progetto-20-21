@@ -17,8 +17,6 @@
 #define OP_SUCCESS 0
 #define OP_FAILURE 1
 #define OP_FATAL 2
-#define FILE_EXPELLED 2
-#define FILE_NOT_EXPELLED -2
 
 
 typedef enum opcodes
@@ -31,7 +29,8 @@ typedef enum opcodes
 	READ_N,
 	LOCK,
 	UNLOCK,
-	REMOVE
+	REMOVE,
+	TERMINATE
 } opcodes_t;
 
 #endif
