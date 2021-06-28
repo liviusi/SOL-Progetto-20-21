@@ -336,6 +336,11 @@ worker_routine(void* arg)
 		// and its arguments as a string
 		tmp_request = request;
 		token = strtok_r(tmp_request, " ", &saveptr);
+		if (!token)
+		{
+			free(fd_ready_string);
+			continue;
+		}
 		EXIT_IF_NEQ(err, 1, sscanf(token, "%d", (int*) &request_type), sscanf);
 		switch (request_type)
 		{
