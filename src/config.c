@@ -11,9 +11,10 @@
 #include <stdbool.h>
 #include <limits.h>
 
+#include <server_defines.h>
+
 
 #define PARAMS 5
-#define MAXPATH 108
 #define BUFFERLEN 256
 #define WORKERSNO "NUMBER OF THREAD WORKERS = "
 #define MAXFILESNO "MAXIMUM NUMBER OF STORABLE FILES = "

@@ -3,6 +3,8 @@
  * @author Giacomo Trapani.
 */
 
+#define _DEFAULT_SOURCE
+
 #include <errno.h>
 #include <math.h>
 #include <time.h>
@@ -20,7 +22,6 @@
 #include <server_interface.h>
 #include <wrappers.h>
 
-#define MAXPATH 128
 #define BUFFERLEN 2048
 
 #define HANDLE_ANSWER(buffer, bufferlen, answer, tmp, fatal_error) \
@@ -45,7 +46,7 @@
 	dest += 2; \
 	if (pathname) dest += strlen(pathname) + 1; \
 	if (buffer) dest += buffer_size + 1; \
-	dest += (size_t) snprintf(0, 0, "%d", buffer_size) + 1;\
+	dest += (size_t) snprintf(0, 0, "%lu", buffer_size) + 1;\
 	if (dirname) dest += strlen(dirname); \
 
 
@@ -71,7 +72,7 @@ openConnection(const char* sockname, int msec, const struct timespec abstime)
 	}
 
 	socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (socket_fd != -1)
+	if (socket_fd == -1)
 	{
 		err = errno;
 		goto failure;
@@ -331,35 +332,22 @@ writeFile(const char* pathname, const char* dirname)
 	bool fatal_error = false;
 	char* contents = NULL;
 
-	if (dirname)
+	READN_NUMBER((long) socket_fd, buffer, BUFFERLEN, tmp, err, failure);
+	while (tmp > 0)
 	{
+		// read content size
 		READN_NUMBER((long) socket_fd, buffer, BUFFERLEN, answer, err, failure);
-		switch (answer)
+		contents = (char*) malloc(sizeof(char) * (answer + 1));
+		GOTO_LABEL_IF_EQ(contents, NULL, err, fatal); // malloc failed
+		if (readn((long) socket_fd, (void*) contents, (size_t) answer) == -1)
 		{
-			case FILE_NOT_EXPELLED:
-				tmp = -1;
-				break;
-			case FILE_EXPELLED:
-				// read number of files expelled
-				READN_NUMBER((long) socket_fd, buffer, BUFFERLEN, tmp, err, failure);
-				break;
+			err = errno;
+			goto failure;
 		}
-		while (tmp > 0)
-		{
-			// read content size
-			READN_NUMBER((long) socket_fd, buffer, BUFFERLEN, answer, err, failure);
-			contents = (char*) malloc(sizeof(char) * (answer + 1));
-			GOTO_LABEL_IF_EQ(contents, NULL, err, fatal); // malloc failed
-			if (readn((long) socket_fd, (void*) contents, (size_t) answer) == -1)
-			{
-				err = errno;
-				goto failure;
-			}
-			contents[answer] = '\0';
-			// should write contents
-			free(contents);
-			tmp--;
-		}
+		contents[answer] = '\0';
+		// should write contents
+		free(contents);
+		tmp--;
 	}
 
 	HANDLE_ANSWER(buffer, BUFFERLEN, answer, tmp, fatal_error);
@@ -452,35 +440,23 @@ appendToFile(const char* pathname, void* buf, size_t size, const char* dirname)
 	bool fatal_error = false;
 	char* contents = NULL;
 
-	if (dirname)
+	READN_NUMBER((long) socket_fd, buffer, BUFFERLEN, tmp, err, failure);
+
+	while (tmp > 0)
 	{
+		// read content size
 		READN_NUMBER((long) socket_fd, buffer, BUFFERLEN, answer, err, failure);
-		switch (answer)
+		contents = (char*) malloc(sizeof(char) * (answer + 1));
+		GOTO_LABEL_IF_EQ(contents, NULL, err, fatal); // malloc failed
+		if (readn((long) socket_fd, (void*) contents, (size_t) answer) == -1)
 		{
-			case FILE_NOT_EXPELLED:
-				tmp = -1;
-				break;
-			case FILE_EXPELLED:
-				// read number of files expelled
-				READN_NUMBER((long) socket_fd, buffer, BUFFERLEN, tmp, err, failure);
-				break;
+			err = errno;
+			goto failure;
 		}
-		while (tmp > 0)
-		{
-			// read content size
-			READN_NUMBER((long) socket_fd, buffer, BUFFERLEN, answer, err, failure);
-			contents = (char*) malloc(sizeof(char) * (answer + 1));
-			GOTO_LABEL_IF_EQ(contents, NULL, err, fatal); // malloc failed
-			if (readn((long) socket_fd, (void*) contents, (size_t) answer) == -1)
-			{
-				err = errno;
-				goto failure;
-			}
-			contents[answer] = '\0';
-			// should write contents
-			free(contents);
-			tmp--;
-		}
+		contents[answer] = '\0';
+		// should write contents
+		free(contents);
+		tmp--;
 	}
 
 	HANDLE_ANSWER(buffer, BUFFERLEN, answer, tmp, fatal_error);

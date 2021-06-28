@@ -18,6 +18,8 @@
 #define OP_FAILURE 1
 #define OP_FATAL 2
 
+#define MAXPATH 108
+
 
 typedef enum opcodes
 {

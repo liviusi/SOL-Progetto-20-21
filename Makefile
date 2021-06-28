@@ -18,6 +18,7 @@ OBJS-RWLOCK = obj/rwlock.o obj/test_rwlock.o
 OBJS-CONFIG = obj/config.o obj/test_config.o
 OBJS-STORAGE = obj/node.o obj/linked_list.o obj/hashtable.o obj/rwlock.o obj/config.o obj/storage.o obj/test_storage.o
 OBJS-SERVER = obj/node.o obj/linked_list.o obj/hashtable.o obj/rwlock.o obj/config.o obj/storage.o obj/bounded_buffer.o obj/server.o
+OBJS-CLIENT = obj/server_interface.o obj/client.o
 
 obj/node.o:
 	$(CC) $(CFLAGS) $(INCLUDES) -c src/data_structures/node.c $(LIBS)
@@ -93,7 +94,18 @@ obj/server.o:
 	$(CC) $(CFLAGS) $(INCLUDES) -c src/server.c $(LIBS)
 	@mv server.o $(OBJ_DIR)/server.o
 
-server: clean $(OBJS-SERVER)
+obj/server_interface.o:
+	$(CC) $(CFLAGS) $(INCLUDES) -c src/server_interface.c $(LIBS)
+	@mv server_interface.o $(OBJ_DIR)/server_interface.o
+
+obj/client.o:
+	$(CC) $(CFLAGS) $(INCLUDES) -c src/client.c $(LIBS)
+	@mv client.o $(OBJ_DIR)/client.o
+
+client: $(OBJS-CLIENT)
+	$(CC) $(CFLAGS) -o $(BUILD_DIR)/client $(OBJS-CLIENT) $(LIBS)
+
+server: $(OBJS-SERVER)
 	$(CC) $(CFLAGS) -o $(BUILD_DIR)/server $(OBJS-SERVER) $(LIBS)
 
 .PHONY: clean cleanall all

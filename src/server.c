@@ -19,7 +19,6 @@
 #include <wrappers.h>
 #include <bounded_buffer.h>
 
-#define MAXPATH 108
 #define MAXCONNECTIONS 10
 #define PIPEBUFFERLEN 10
 #define TASKLEN 32
