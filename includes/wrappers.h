@@ -31,7 +31,7 @@
 #define EXIT_IF_NEQ(variable, expected_value, function_call, function_name) \
 	if ((variable = function_call) != expected_value) \
 	{ \
-		fprintf(stderr, "Fatal error occurred at line %d\n", __LINE__); \
+		fprintf(stderr, "Fatal error occurred at %s:%d\n", __FILE__, __LINE__); \
 		perror(#function_name); \
 		exit(EXIT_FAILURE); \
 	}
@@ -45,7 +45,7 @@
 #define EXIT_IF_EQ(variable, expected_value, function_call, function_name) \
 	if ((variable = function_call) == expected_value) \
 	{ \
-		fprintf(stderr, "Fatal error occurred at line %d\n", __LINE__); \
+		fprintf(stderr, "Fatal error occurred at %s:%d\n", __FILE__, __LINE__); \
 		perror(#function_name); \
 		exit(EXIT_FAILURE); \
 	}
@@ -85,6 +85,7 @@
 		err = errno; \
 		goto label; \
 	} \
+	fprintf(stderr, "[%s:%d]", __FILE__, __LINE__);\
 	if (isNumber(buffer, &number) != 0) \
 	{ \
 		err = EBADMSG; \

@@ -32,7 +32,9 @@
 	errnocopy = errno; \
 	memset(buffer, 0, bufferlen); \
 	snprintf(buffer, bufferlen, "%d", err); \
-	EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) buffer, bufferlen), writen); \
+	fprintf(stdout, "[%d] buffer = %s\n", __LINE__, buffer); \
+	fprintf(stdout, "[%d] fd = %d\n", __LINE__, (int) fd); \
+	EXIT_IF_EQ(tmp_err, -1, writen((long) fd, (void*) buffer, bufferlen), writen); \
 	switch(err) \
 	{ \
 		case OP_SUCCESS: \
@@ -41,12 +43,12 @@
 		case OP_FATAL: \
 			memset(buffer, 0, bufferlen); \
 			strerror_r(errnocopy, buffer, bufferlen); \
-			EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) buffer, bufferlen), writen); \
+			EXIT_IF_EQ(tmp_err, -1, writen((long) fd, (void*) buffer, bufferlen), writen); \
 			break; \
 	} \
 	if (err == OP_FATAL) \
 	{ \
-		fprintf(stderr, "Fatal error occurred inside storage.\n"); \
+		fprintf(stdout, "Fatal error occurred inside storage.\n"); \
 		terminate = 1; \
 	}
 
@@ -84,7 +86,7 @@ main(int argc, char* argv[])
 {
 	if (argc != 2)
 	{
-		fprintf(stderr, "Usage: %s <path-to-config.txt>\n", argv[0]);
+		fprintf(stdout, "Usage: %s <path-to-config.txt>\n", argv[0]);
 		return 1;
 	}
 	int err; // placeholder for functions' output values
@@ -150,7 +152,7 @@ main(int argc, char* argv[])
 				ServerConfig_GetSocketFilePath);
 	strncpy(saddr.sun_path, sockname, MAXPATH);
 	saddr.sun_family = AF_UNIX;
-	//fprintf(stderr, "sockname: %s\n", sockname);
+	//fprintf(stdout, "sockname: %s\n", sockname);
 	EXIT_IF_EQ(fd_socket, -1, socket(AF_UNIX, SOCK_STREAM, 0), socket);
 	EXIT_IF_EQ(err, -1, bind(fd_socket, (struct sockaddr*)&saddr, sizeof saddr), bind);
 	EXIT_IF_EQ(err, -1, listen(fd_socket, MAXCONNECTIONS), listen);
@@ -236,6 +238,7 @@ main(int argc, char* argv[])
 				else if (i == fd_socket) // new client
 				{
 					EXIT_IF_EQ(fd_new_client, -1, accept(fd_socket, NULL, 0), accept);
+					fprintf(stdout, "Accepted new client : %d\n", fd_new_client);
 
 					if (no_more_clients) close(fd_new_client);
 					else
@@ -249,6 +252,7 @@ main(int argc, char* argv[])
 				{
 					memset(new_task, 0, TASKLEN);
 					snprintf(new_task, TASKLEN, "%d", i);
+					fprintf(stdout, "New task received from : %s\n", new_task);
 					FD_CLR(i, &master_read_set);
 					if (i == fd_num) fd_num--;
 					// push ready file descriptor to task queue for workers
@@ -299,10 +303,10 @@ worker_routine(void* arg)
 	int err; // used as a placeholder for functions' output values
 	int tmp_err; // used as a placeholder for functions' output values
 	int errnocopy; // copy of errno value
-	char* fd_ready_string; // fd to read from as a string
+	char* fd_ready_string; // currently being served client as a string
 	char* token = NULL; // token for strtok_r
 	char* saveptr = NULL; // saveptr for strtok_r
-	int fd_ready; // fd to read from
+	int fd_ready; // currently being served client
 	opcodes_t request_type; // type of request to be handled
 	char* request; // request as a string
 	char* tmp_request; // copy of request as a string
@@ -323,6 +327,7 @@ worker_routine(void* arg)
 		// read ready fd from tasks' queue
 		EXIT_IF_NEQ(err, 0, BoundedBuffer_Dequeue(tasks, &fd_ready_string),
 					BoundedBuffer_Dequeue);
+		fprintf(stdout, "ready fd: %s\n", fd_ready_string);
 		EXIT_IF_NEQ(err, 1, sscanf(fd_ready_string, "%d", &fd_ready), sscanf);
 		if (fd_ready == TERMINATE_WORKER) // termination message
 		{
@@ -342,26 +347,51 @@ worker_routine(void* arg)
 			continue;
 		}
 		EXIT_IF_NEQ(err, 1, sscanf(token, "%d", (int*) &request_type), sscanf);
+		fprintf(stdout, "request type = %d\n", (int) request_type);
+		fflush(stdout);
 		switch (request_type)
 		{
 			case OPEN:
 				// get pathname
 				memset(pathname, 0, MAXPATH);
-				EXIT_IF_EQ(token, NULL, strtok_r(tmp_request, " ", &saveptr), strtok_r);
+				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				// get flags
 				flags = 0;
-				EXIT_IF_EQ(token, NULL, strtok_r(tmp_request, " ", &saveptr), strtok_r);
+				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%d", &flags), sscanf);
+				fprintf(stderr, "pathname : %s\nflags : %d\nfd_ready : %d\n", pathname, flags, fd_ready);
 				err = Storage_openFile(storage, pathname, flags, fd_ready);
+				if (err == OP_SUCCESS)
+				{
+					fprintf(stdout, "[%s:%d] SUCCESS.\n", __FILE__, __LINE__);
+				}
+				errnocopy = errno;
 				// handle answer
-				HANDLE_ANSWER(err, errnocopy, fd_ready, request, REQUESTLEN);
+				memset(request, 0, REQUESTLEN);
+				snprintf(request, REQUESTLEN, "%d", err);
+				fprintf(stdout, "[%d] sending %s\n", __LINE__, request);
+				fflush(stdout);
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, REQUESTLEN), writen);
+				switch (err)
+				{
+					case OP_SUCCESS:
+						break;
+
+					case OP_FAILURE:
+					case OP_FATAL:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*)
+									request, REQUESTLEN), writen);
+						break;
+				}
 				break;
 
 			case CLOSE:
 				// get pathname
 				memset(pathname, 0, MAXPATH);
-				EXIT_IF_EQ(token, NULL, strtok_r(tmp_request, " ", &saveptr), strtok_r);
+				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_closeFile(storage, pathname, fd_ready);
 				// handle answer
@@ -393,10 +423,10 @@ worker_routine(void* arg)
 				evicted = NULL;
 				// get pathname
 				memset(pathname, 0, MAXPATH);
-				EXIT_IF_EQ(token, NULL, strtok_r(tmp_request, " ", &saveptr), strtok_r);
+				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				// check whether dirname has been specified
-				token = strtok_r(tmp_request, " ", &saveptr);
+				token = strtok_r(NULL, " ", &saveptr);
 				if (!token)
 					err = Storage_writeFile(storage, pathname, NULL, fd_ready);
 				else

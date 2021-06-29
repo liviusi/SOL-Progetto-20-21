@@ -1,6 +1,7 @@
 /**
  * @brief Source file for server_interface header.
  * @author Giacomo Trapani.
+ * IT IS TO BE REDONE.
 */
 
 #define _DEFAULT_SOURCE
@@ -26,6 +27,7 @@
 
 #define HANDLE_ANSWER(buffer, bufferlen, answer, tmp, fatal_error) \
 	READN_NUMBER((long) socket_fd, (void*) buffer, bufferlen, answer, err, failure); \
+	fprintf(stderr, "[%s:%d] answer = %d\n", __FILE__, __LINE__, (int) answer); \
 	switch (answer) \
 	{ \
 		case OP_FAILURE: \
@@ -171,19 +173,59 @@ openFile(const char* pathname, int flags)
 	*/
 
 	char buffer[BUFFERLEN];
-	int len = snprintf(buffer, BUFFERLEN, "%d %s %d", OPEN, pathname, flags);
-	if (writen((long) socket_fd, (void*) buffer, len) == -1)
+	memset(buffer, 0, BUFFERLEN);
+	snprintf(buffer, BUFFERLEN, "%d %s %d", OPEN, pathname, flags);
+	if (writen((long) socket_fd, (void*) buffer, BUFFERLEN) == -1)
 	{
 		err = errno;
 		goto failure;
 	}
-
 	memset(buffer, 0, BUFFERLEN);
-	long answer, tmp;
-	bool fatal_error = false;
-	HANDLE_ANSWER(buffer, BUFFERLEN, answer, tmp, fatal_error);
+	int answer;
+	if (readn((long) socket_fd, (void*) buffer, BUFFERLEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	fprintf(stderr, "[%d] buffer = %s\n", __LINE__, buffer);
+	if (sscanf(buffer, "%d", &answer) != 1)
+	{
+		err = EBADMSG;
+		goto failure;
+	}
+	switch (answer)
+	{
+		case OP_SUCCESS:
+			break;
 
-	if (fatal_error) goto fatal;
+		case OP_FAILURE:
+			if (readn((long) socket_fd, (void*) buffer, BUFFERLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			fprintf(stderr, "[%d] buffer = %s\n", __LINE__, buffer);
+			if (sscanf(buffer, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			goto failure;
+		
+		case OP_FATAL:
+			if (readn((long) socket_fd, (void*) buffer, BUFFERLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			fprintf(stderr, "[%d] buffer = %s\n", __LINE__, buffer);
+			if (sscanf(buffer, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			goto fatal;
+	}
 
 	PRINT_IF(print_enabled, "openFile %s %d : SUCCESS.\n", pathname, flags);
 	return 0;
@@ -346,6 +388,7 @@ writeFile(const char* pathname, const char* dirname)
 		}
 		contents[answer] = '\0';
 		// should write contents
+		fprintf(stdout, "%s\n", contents);
 		free(contents);
 		tmp--;
 	}

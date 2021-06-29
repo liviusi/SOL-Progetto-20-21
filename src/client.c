@@ -25,6 +25,23 @@
 	character == 'l' || character == 'u' || character == 'c' || \
 	character == 'p'
 
+
+#define H_MESSAGE \
+"Client accepts these command line arguments:\n"\
+"-h : prints this message.\n"\
+"-f <filename> : connects to given socket.\n"\
+"-w <dirname>[,n=0] : sends to server up to n files in given directory and its subdirectories.\n"\
+"-W <file1>[,file2] : sends to server given files.\n"\
+"-D <dirname> : specifies the folder evicted files are to be sent to.\n"\
+"-r <file1>[,file2] : reads given files from server.\n"\
+"-R [n=0] : reads at least n files from server (if unspecified, it reads every file).\n"\
+"-d <dirname> : specifies the folder read files are to be stored in.\n"\
+"-t <time> : specifies time to wait between requests.\n"\
+"-l <file1>[,file2] : requests lock over given files.\n"\
+"-u <file1>[,file2] : releases lock over given files.\n"\
+"-c <file1>[,file2] : requests server to remove given files.\n"\
+"-p : enables output on stdout.\n"
+
 /**
  * @brief Validates commands and arguments. It also sets
  * flags.
@@ -98,8 +115,15 @@ main(int argc, char* argv[])
 		goto cleanup;
 	}
 	char flag; int msec = 1000;
+	char* tmp; char* token; char* saveptr;
+	int open_flags = 0;
 	struct timespec abstime = { .tv_nsec = 0, .tv_sec = time(0) + 10 };
 	// execute commands
+	if (h_set)
+	{
+		fprintf(stdout, H_MESSAGE);
+		goto cleanup;
+	}
 	for (int i = 0; i < argc - 1; i++)
 	{
 		if (commands[i][0] == '\0') continue;
@@ -110,23 +134,70 @@ main(int argc, char* argv[])
 				// execute openConnection
 				openConnection(sockname, msec, abstime);
 				break;
+
+			case 'w':
+				break;
+
+			case 'W':
+				// open file1
+				tmp = arguments[i];
+				if (strchr(tmp, ',') == NULL)
+				{
+					SET_FLAG(open_flags, O_CREATE);
+					SET_FLAG(open_flags, O_LOCK);
+					openFile(tmp, open_flags);
+					RESET_MASK(open_flags);
+					if (i + 2 < argc -1)
+					{
+						if (commands[i+2][0] == 'D')
+							writeFile(tmp, arguments[i+2]);
+					}
+					else
+						writeFile(tmp, NULL);
+					closeFile(tmp);
+					break;
+				}
+				else
+					while (1)
+					{
+						token = strtok_r(tmp, ",", &saveptr);
+						if (!token) break;
+						SET_FLAG(open_flags, O_CREATE);
+						SET_FLAG(open_flags, O_LOCK);
+						openFile(tmp, open_flags);
+						RESET_MASK(open_flags);
+						if (i + 2 < argc - 1 && commands[i+2][0] == 'D')
+							writeFile(tmp, arguments[i+2]);
+						else
+							writeFile(tmp, NULL);
+						closeFile(tmp);
+					}
+				break;
+
+			case 't':
+				// set waiting time
+				sscanf(arguments[i], "%d", &msec);
+				break;
+
 			default:
 				break;
 		}
 	}
 	goto cleanup;
 
-cleanup:
-	for (int i = 0; i < argc - 1; i++)
-	{
-		fprintf(stdout, "commands[%d] : %s", i, commands[i]);
-		fprintf(stdout, "\targuments[%d] : %s\n", i, arguments[i]);
-		free(commands[i]);
-		free(arguments[i]);
-	}
-	free(commands);
-	free(arguments);
-	return 0;
+
+
+	cleanup:
+		for (int i = 0; i < argc - 1; i++)
+		{
+			fprintf(stdout, "commands[%d] : %s", i, commands[i]);
+			fprintf(stdout, "\targuments[%d] : %s\n", i, arguments[i]);
+			free(commands[i]);
+			free(arguments[i]);
+		}
+		free(commands);
+		free(arguments);
+		return 0;
 }
 
 int
