@@ -118,6 +118,7 @@ main(int argc, char* argv[])
 	char* tmp; char* token; char* saveptr;
 	int open_flags = 0;
 	struct timespec abstime = { .tv_nsec = 0, .tv_sec = time(0) + 10 };
+	char* read_contents = NULL; size_t read_size = 0;
 	// execute commands
 	if (h_set)
 	{
@@ -139,9 +140,10 @@ main(int argc, char* argv[])
 				break;
 
 			case 'W':
-				// open file1
+				// write files
 				tmp = arguments[i];
-				if (strchr(tmp, ',') == NULL)
+				// check whether multiple files have been specified
+				if (strchr(tmp, ',') == NULL) // single file
 				{
 					SET_FLAG(open_flags, O_CREATE);
 					SET_FLAG(open_flags, O_LOCK);
@@ -154,30 +156,114 @@ main(int argc, char* argv[])
 					}
 					else
 						writeFile(tmp, NULL);
+					unlockFile(tmp);
 					closeFile(tmp);
 					break;
 				}
-				else
+				else // multiple files
+				{
+					token = strtok_r(tmp, ",", &saveptr);
 					while (1)
 					{
-						token = strtok_r(tmp, ",", &saveptr);
 						if (!token) break;
 						SET_FLAG(open_flags, O_CREATE);
 						SET_FLAG(open_flags, O_LOCK);
-						openFile(tmp, open_flags);
+						openFile(token, open_flags);
 						RESET_MASK(open_flags);
 						if (i + 2 < argc - 1 && commands[i+2][0] == 'D')
-							writeFile(tmp, arguments[i+2]);
+							writeFile(token, arguments[i+2]);
 						else
-							writeFile(tmp, NULL);
-						closeFile(tmp);
+							writeFile(token, NULL);
+						unlockFile(token);
+						closeFile(token);
+						token = strtok_r(NULL, ",", &saveptr);
 					}
+				}
+				break;
+
+			case 'r':
+				// read files
+				tmp = arguments[i];
+				// check whether multiple files have been specified
+				if (strchr(tmp, ',') == NULL) // single file
+				{
+					RESET_MASK(open_flags);
+					openFile(tmp, open_flags);
+					readFile(tmp, (void** )&read_contents, &read_size);
+					closeFile(tmp);
+					fprintf(stdout, "SIZE: %lu\tCONTENTS:\n%s", read_size, read_contents);
+					free(read_contents); read_contents = NULL;
+					break;
+				}
+				else // multiple files
+				{
+					token = strtok_r(tmp, ",", &saveptr);
+					while (1)
+					{
+						if (!token) break;
+						RESET_MASK(open_flags);
+						openFile(token, open_flags);
+						readFile(token, (void**) &read_contents, &read_size);
+						closeFile(token);
+						fprintf(stdout, "SIZE: %lu\tCONTENTS:\n%s", read_size, read_contents);
+						free(read_contents); read_contents = NULL;
+						token = strtok_r(NULL, ",", &saveptr);
+						
+					}
+				}
 				break;
 
 			case 't':
 				// set waiting time
 				sscanf(arguments[i], "%d", &msec);
 				break;
+
+			case 'l':
+				tmp = arguments[i];
+				RESET_MASK(open_flags);
+				// check whether multiple files have been specified
+				if (strchr(tmp, ',') == NULL) // single file
+				{
+					openFile(tmp, open_flags);
+					lockFile(tmp);
+				}
+				else // multiple files
+				{
+					token = strtok_r(tmp, ",", &saveptr);
+					while (1)
+					{
+						if (!token) break;
+						openFile(token, open_flags);
+						lockFile(token);
+						closeFile(token);
+						token = strtok_r(NULL, ",", &saveptr);
+					}
+				}
+				break;
+
+			case 'u':
+				tmp = arguments[i];
+				RESET_MASK(open_flags);
+				// check whether multiple files have been specified
+				if (strchr(tmp, ',') == NULL) // single file
+				{
+					openFile(tmp, open_flags);
+					unlockFile(tmp);
+				}
+				else // multiple files
+				{
+					token = strtok_r(tmp, ",", &saveptr);
+					while (1)
+					{
+						if (!token) break;
+						openFile(token, open_flags);
+						unlockFile(token);
+						closeFile(token);
+						token = strtok_r(NULL, ",", &saveptr);
+					}
+				}
+				break;
+
 
 			default:
 				break;
