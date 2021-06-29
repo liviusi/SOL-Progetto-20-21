@@ -66,7 +66,6 @@
 
 volatile sig_atomic_t terminate = 0;
 volatile sig_atomic_t no_more_clients = 0;
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void* worker_routine(void*);
 void signal_handler(int);
@@ -316,8 +315,8 @@ worker_routine(void* arg)
 	void* append_buf = NULL; // buffer used for append operation
 	size_t append_size = 0; // size of append_buf
 	int flags = 0; // used to denote flags for operations on storage
-	//char* evicted_file_name = NULL; // name of evicted file
-	//void* evicted_file_content = NULL; // content of evicted file
+	char* evicted_file_name = NULL; // name of evicted file
+	char* evicted_file_content = NULL; // content of evicted file
 	char pipe_buffer[PIPEBUFFERLEN]; // buffer to be written on pipe
 	while(1)
 	{
@@ -409,14 +408,37 @@ worker_routine(void* arg)
 				memset(pathname, 0, MAXPATH);
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
-				// check whether dirname has been specified
-				token = strtok_r(NULL, " ", &saveptr);
-				if (!token)
-					err = Storage_writeFile(storage, pathname, NULL, fd_ready);
-				else
-					err = Storage_writeFile(storage, pathname, &evicted, fd_ready);
+				err = Storage_writeFile(storage, pathname, &evicted, fd_ready);
 				HANDLE_ANSWER;
+				// send number of victims
+				memset(request, 0, REQUESTLEN);
+				snprintf(request, REQUESTLEN, "%lu", LinkedList_GetNumberOfElements(evicted));
+				EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, REQUESTLEN), writen);
 				// send evicted files
+				if (LinkedList_GetNumberOfElements(evicted) != 0)
+				{
+					memset(request, 0, REQUESTLEN);
+					snprintf(request, REQUESTLEN, "%lu", LinkedList_GetNumberOfElements(evicted));
+					while (1)
+					{
+						if (LinkedList_GetNumberOfElements(evicted) == 0) break;
+						EXIT_IF_EQ(err, -1, LinkedList_PopFront(evicted, &evicted_file_name,
+									(void**) &evicted_file_content), LinkedList_PopFront);
+						memset(request, 0, REQUESTLEN);
+						// it is assumed file contents are null terminated
+						snprintf(request, REQUESTLEN, "%lu:%s", strlen(evicted_file_content),
+									evicted_file_name);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*)
+									request, REQUESTLEN), writen);
+						fprintf(stderr, "[%d] File content is about to be sent.\n%s", __LINE__,
+									evicted_file_content);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, evicted_file_content,
+									strlen(evicted_file_content)), writen);
+						free(evicted_file_name); evicted_file_name = NULL;
+						free(evicted_file_content); evicted_file_content = NULL;
+					}
+				}
+				LinkedList_Free(evicted); evicted = NULL;
 				REQUEST_DONE;
 				break;
 

@@ -8,6 +8,7 @@
 
 #include <errno.h>
 #include <math.h>
+#include <linux/limits.h>
 #include <time.h>
 #include <unistd.h>
 #include <string.h>
@@ -18,9 +19,10 @@
 #include <sys/un.h>
 #include <stdbool.h>
 #include <stdio.h>
+
 #include <server_defines.h>
-#include <utilities.h>
 #include <server_interface.h>
+#include <utilities.h>
 #include <wrappers.h>
 
 #define BUFFERLEN 2048
@@ -343,14 +345,80 @@ writeFile(const char* pathname, const char* dirname)
 
 	char buffer[BUFFERLEN];
 	memset(buffer, 0, BUFFERLEN);
-	if (dirname) 
-		snprintf(buffer, BUFFERLEN, "%d %s %s", WRITE, pathname, dirname);
-	else
-		snprintf(buffer, BUFFERLEN, "%d %s", WRITE, pathname);
+	snprintf(buffer, BUFFERLEN, "%d %s", WRITE, pathname);
 	
 	HANDLER;
 
 	// handle evicted files
+	memset(buffer, 0, BUFFERLEN);
+	if (readn((long) socket_fd, (void*) buffer, BUFFERLEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	unsigned long evicted_no = 0;
+	if (sscanf(buffer, "%lu", &evicted_no) != 1)
+	{
+		err = EBADMSG;
+		goto failure;
+	}
+	fprintf(stderr, "[%d] %lu files have been evicted.\n", __LINE__, evicted_no);
+	char* name = (char*) malloc(sizeof(char) * PATH_MAX);
+	if (!name) // enomem
+	{
+		err = errno;
+		goto fatal;
+	}
+	while (evicted_no != 0)
+	{
+		// reading file name and content size
+		memset(buffer, 0, BUFFERLEN);
+		size_t content_size = 0;
+		if (readn((long) socket_fd, (void*) buffer, BUFFERLEN) == -1)
+		{
+			err = errno;
+			goto failure;
+		}
+		fprintf(stderr, "[%d] Evicted file name and size: %s\n", __LINE__, buffer);
+		if (sscanf(buffer, "%lu:%s", &content_size, name) != 2)
+		{
+			err = EBADMSG;
+			goto failure;
+		}
+		char* contents = (char*) malloc(sizeof(char) * (content_size + 1));
+		if (!contents) // enomem
+		{
+			err = errno;
+			goto fatal;
+		}
+		// reading contents
+		memset(contents, 0, content_size + 1);
+		if (readn((long) socket_fd, (void*) contents, content_size) == -1)
+		{
+			err = errno;
+			goto failure;
+		}
+		if (dirname) // files are to be saved if and only if dirname has been specified
+		{
+			// prepend dirname to name
+			size_t dir_len = strlen(dirname);
+			if (dir_len + strlen(name) > PATH_MAX)
+			{
+				err = ENAMETOOLONG;
+				goto failure;
+			}
+			memmove(name + dir_len, name, strlen(name) + 1);
+			memcpy(name, dirname, dir_len);
+			if (savefile(name, contents) != 0)
+			{
+				err = errno;
+				goto failure;
+			}
+		}
+		free(contents);
+		evicted_no--;
+	}
+	free(name);
 
 	if (dirname)
 	{

@@ -146,11 +146,12 @@ Node_CopyData(const node_t* node, void** dataptr)
 		return len;
 	}
 	void* tmp;
-	if ((tmp = malloc(len)) == NULL)
+	if ((tmp = malloc(len + 1)) == NULL)
 	{
 		errno = ENOMEM;
 		return 0;
 	}
+	memset(tmp, 0, len+1);
 	memcpy(tmp, node->data, len);
 	*dataptr = tmp;
 	return len;

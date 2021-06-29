@@ -78,20 +78,6 @@
 #define PRINT_IF(flag, ...) \
 	if (flag) fprintf(stdout, __VA_ARGS__);
 
-#define READN_NUMBER(fd, buffer, bufferlen, number, err, label) \
-	memset(buffer, 0, bufferlen); \
-	if (readn(fd, (void*) buffer, bufferlen) == -1) \
-	{ \
-		err = errno; \
-		goto label; \
-	} \
-	fprintf(stderr, "[%s:%d]", __FILE__, __LINE__);\
-	if (isNumber(buffer, &number) != 0) \
-	{ \
-		err = EBADMSG; \
-		goto label; \
-	}
-
 #define MAX(a, b) ((a >= b) ? (a) : (b))
 
 #endif
