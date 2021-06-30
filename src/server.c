@@ -34,27 +34,6 @@
 		continue; \
 	}
 
-#define HANDLE_ANSWER \
-{ \
-	errnocopy = errno; \
-	if (err == OP_SUCCESS) \
-		fprintf(stdout, "[%s:%d] SUCCESS.\n", __FILE__, __LINE__); \
-	memset(request, 0, REQUESTLEN); \
-	snprintf(request, REQUESTLEN, "%d", err); \
-	fflush(stdout); \
-	EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, REQUESTLEN), writen); \
-	switch (err) \
-	{ \
-		case OP_SUCCESS: \
-			break; \
-		case OP_FAILURE: \
-		case OP_FATAL: \
-			memset(request, 0, REQUESTLEN); \
-			snprintf(request, REQUESTLEN, "%d", errnocopy); \
-			EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, REQUESTLEN), writen); \
-			break; \
-	} \
-}
 
 #define REQUEST_DONE \
 { \
@@ -318,6 +297,7 @@ worker_routine(void* arg)
 	char* evicted_file_name = NULL; // name of evicted file
 	char* evicted_file_content = NULL; // content of evicted file
 	char pipe_buffer[PIPEBUFFERLEN]; // buffer to be written on pipe
+	char msg_size[TASKLEN];
 	while(1)
 	{
 		// reset task string
@@ -356,7 +336,7 @@ worker_routine(void* arg)
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%d", &flags), sscanf);
 				//fprintf(stderr, "pathname : %s\nflags : %d\nfd_ready : %d\n", pathname, flags, fd_ready);
 				err = Storage_openFile(storage, pathname, flags, fd_ready);
-				HANDLE_ANSWER;
+				//HANDLE_ANSWER;
 				REQUEST_DONE;
 				break;
 
@@ -366,7 +346,7 @@ worker_routine(void* arg)
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_closeFile(storage, pathname, fd_ready);
-				HANDLE_ANSWER;
+				//HANDLE_ANSWER;
 				REQUEST_DONE;
 				break;
 
@@ -385,18 +365,18 @@ worker_routine(void* arg)
 				if (flags == 1)
 				{
 					err = Storage_readFile(storage, pathname, &read_buf, &read_size, fd_ready);
-					HANDLE_ANSWER;
+					//HANDLE_ANSWER;
 					memset(request, 0, REQUESTLEN);
 					snprintf(request, REQUESTLEN, "%lu", read_size);
 					EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-								REQUESTLEN), writen);
+								strlen(request) + 1), writen);
 					EXIT_IF_EQ(err, -1, writen((long) fd_ready, read_buf, read_size), writen);
 					free(read_buf); read_buf = NULL;
 				}
 				else
 				{
 					err = Storage_readFile(storage, pathname, NULL, NULL, fd_ready);
-					HANDLE_ANSWER;
+					//HANDLE_ANSWER;
 				}
 				// should somehow send read file
 				REQUEST_DONE;
@@ -411,36 +391,8 @@ worker_routine(void* arg)
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_writeFile(storage, pathname, &evicted, fd_ready);
-				HANDLE_ANSWER;
+				//HANDLE_ANSWER;
 				// send number of victims
-				memset(request, 0, REQUESTLEN);
-				snprintf(request, REQUESTLEN, "%lu", LinkedList_GetNumberOfElements(evicted));
-				EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, REQUESTLEN), writen);
-				// send evicted files
-				if (LinkedList_GetNumberOfElements(evicted) != 0)
-				{
-					memset(request, 0, REQUESTLEN);
-					snprintf(request, REQUESTLEN, "%lu", LinkedList_GetNumberOfElements(evicted));
-					while (1)
-					{
-						if (LinkedList_GetNumberOfElements(evicted) == 0) break;
-						EXIT_IF_EQ(err, -1, LinkedList_PopFront(evicted, &evicted_file_name,
-									(void**) &evicted_file_content), LinkedList_PopFront);
-						memset(request, 0, REQUESTLEN);
-						// it is assumed file contents are null terminated
-						// CONTENT IS NOT NULL TERMINATED
-						// THEREFORE A SEGFAULT OCCURS
-						snprintf(request, REQUESTLEN, "%lu:%s", strlen(evicted_file_content),
-									evicted_file_name);
-						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*)
-									request, REQUESTLEN), writen);
-						//fprintf(stderr, "[%d] File content is about to be sent.\n%s", __LINE__,evicted_file_content);
-						EXIT_IF_EQ(err, -1, writen((long) fd_ready, evicted_file_content,
-									strlen(evicted_file_content)), writen);
-						free(evicted_file_name); evicted_file_name = NULL;
-						free(evicted_file_content); evicted_file_content = NULL;
-					}
-				}
 				LinkedList_Free(evicted); evicted = NULL;
 				REQUEST_DONE;
 				break;
@@ -468,7 +420,7 @@ worker_routine(void* arg)
 					err = Storage_appendToFile(storage, pathname, append_buf,
 								append_size, &evicted, fd_ready);
 				// handle answer
-				HANDLE_ANSWER;
+				//HANDLE_ANSWER;
 				// send evicted files
 				REQUEST_DONE;
 				break;
@@ -483,7 +435,7 @@ worker_routine(void* arg)
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_lockFile(storage, pathname, fd_ready);
-				HANDLE_ANSWER;
+				//HANDLE_ANSWER;
 				REQUEST_DONE;
 				break;
 
@@ -493,7 +445,7 @@ worker_routine(void* arg)
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_unlockFile(storage, pathname, fd_ready);
-				HANDLE_ANSWER;
+				//HANDLE_ANSWER;
 				REQUEST_DONE;
 				break;
 
@@ -503,7 +455,7 @@ worker_routine(void* arg)
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_removeFile(storage, pathname, fd_ready);
-				HANDLE_ANSWER;
+				//HANDLE_ANSWER;
 				REQUEST_DONE;
 				break;
 			/**

@@ -483,12 +483,14 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 	err = fseek(pathname_file, 0, SEEK_END);
 	if (err != 0) return OP_FAILURE;
 	length = ftell(pathname_file);
+	fprintf(stderr, "[%s:%d] %s has length %ld\n", __FILE__, __LINE__, pathname, (unsigned long) length);
 	err = fseek(pathname_file, 0, SEEK_SET);
 	if (err != 0) return OP_FAILURE;
 
 	// file must not be bigger than storage's size
 	if (length > storage->max_storage_size)
 	{
+		if (evicted) *evicted = tmp_evicted;
 		fclose(pathname_file);
 		errno = EFBIG;
 		return OP_FAILURE;
@@ -502,13 +504,15 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 		read_length = fread(pathname_contents, sizeof(char), length, pathname_file);
 		if (read_length != length && ferror(pathname_file)) // fread failed
 		{
+			if (evicted) *evicted = tmp_evicted;
 			fclose(pathname_file);
+			free(pathname_contents);
 			errno = EBADE;
 			return OP_FAILURE;
 		}
 		pathname_contents[length] = '\0'; // string needs to be null terminated
+		//fprintf(stderr, "[DEBUG %s:%d] SIZE: %lu\nCONTENTS:\n%s\n", __FILE__, __LINE__, length, pathname_contents);
 	}
-	else pathname_contents = NULL;
 	fclose(pathname_file);
 
 	// as files may be deleted, no readers are allowed on storage
@@ -524,6 +528,8 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 
 		if (stored_file->potential_writer != client) // client cannot write this file
 		{
+			if (evicted) *evicted = tmp_evicted;
+			free(pathname_contents);
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
 			errno = EACCES;
 			return OP_FAILURE;
@@ -553,6 +559,7 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 			if (evicted) *evicted = tmp_evicted;
 			if (failure) // file to be written got evicted
 			{
+				free(pathname_contents);
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
 				errno = EIDRM;
 				return OP_FAILURE;
@@ -561,7 +568,9 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 		if (pathname_contents) // file is not empty
 		{
 			stored_file->contents_size = length;
-			stored_file->contents = (void*) pathname_contents;
+			RETURN_FATAL_IF_EQ(stored_file->contents, NULL, malloc(length + 1));
+			memcpy(stored_file->contents, pathname_contents, length + 1);
+			free(pathname_contents);
 		}
 		stored_file->potential_writer = 0;
 		storage->storage_size+=length;
@@ -569,6 +578,7 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 	}
 	else
 	{
+		free(pathname_contents);
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
 		errno = EBADF;
 		return OP_FAILURE;
@@ -637,8 +647,12 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 				if (strcmp(victim_name, pathname) == 0) failure = true;
 				RETURN_FATAL_IF_EQ(tmp, NULL, (stored_file_t*)
 							HashTable_GetPointerToData(storage->files, (void*) victim_name));
-				if (evicted) RETURN_FATAL_IF_NEQ(err, 0, LinkedList_PushFront(tmp_evicted, victim_name,
-							strlen(victim_name) + 1, tmp->contents, tmp->contents_size));
+				if (evicted)
+				{
+					RETURN_FATAL_IF_NEQ(err, 0, LinkedList_PushFront(tmp_evicted, victim_name,
+							strlen(victim_name) + 1, tmp->contents, strlen(tmp->contents) + 1));
+					fprintf(stderr, "[DEBUG %s:%d] SIZE: %lu\nCONTENTS:\n%s\n", __FILE__, __LINE__, tmp->contents_size, (char*)tmp->contents);
+				}
 				storage->storage_size -= tmp->contents_size;
 				storage->files_no--;
 				RETURN_FATAL_IF_NEQ(err, 0, HashTable_DeleteNode(storage->files, (void*) victim_name));

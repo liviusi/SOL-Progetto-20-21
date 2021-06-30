@@ -105,10 +105,11 @@ main(int argc, char* argv[])
 	char flag; int msec = 1000;
 	int msec_sleeping = 0; // milliseconds client shall sleep between requests
 	char* tmp; char* token; char* saveptr;
-	char* dirname; int upto = 0; linked_list_t* R_files = NULL; char* filename = NULL;
+	char* dirname; linked_list_t* R_files = NULL; char* filename = NULL;
 	int open_flags = 0;
 	struct timespec abstime = { .tv_nsec = 0, .tv_sec = time(0) + 10 };
 	char* read_contents = NULL; size_t read_size = 0;
+	char* cwd_copy = NULL;
 	// parse argv into commands to be executed
 	for (int i = 1; i < argc; i++)
 	{
@@ -174,11 +175,14 @@ main(int argc, char* argv[])
 					fprintf(stderr, "NO LIMITS.\n");
 					R_files = LinkedList_Init(NULL);
 					if (!R_files) goto cleanup;
+					cwd_copy = cwd();
 					if (list_files(arguments[i], R_files) == -1)
 					{
 						if (errno == ENOMEM) goto cleanup;
 						else break;
 					}
+					if (chdir(cwd_copy) == -1) goto cleanup;
+					free(cwd_copy); cwd_copy = NULL;
 					while (LinkedList_GetNumberOfElements(R_files) != 0)
 					{
 						if (LinkedList_PopFront(R_files, &filename, NULL) == -1) goto cleanup;

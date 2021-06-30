@@ -19,6 +19,8 @@
 #define OP_FATAL 2
 
 #define MAXPATH 108
+#define MAXFILESIZE 1000000 // 1 MB
+#define MSG_SIZELEN 32
 
 
 typedef enum opcodes

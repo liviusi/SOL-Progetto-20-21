@@ -133,11 +133,14 @@ LinkedList_PopFront(linked_list_t* list, char** keyptr, void** dataptr)
 		else *keyptr = NULL;
 	}
 	errno = 0;
-	if ((dataptr != NULL) && (Node_CopyData(list->first, dataptr) == 0))
+	void* tmp;
+	if ((dataptr != NULL) && (Node_CopyData(list->first, &tmp) == 0))
 	{
+		fprintf(stderr, "[DEBUG %s:%d] DATA: %s\n", __FILE__, __LINE__, (char*) tmp);
 		if (errno == ENOMEM) return -1;
 		else *dataptr = NULL;
 	}
+	if (dataptr) *dataptr = tmp;
 	if (list->nelems == 0)
 	{
 		Node_Free(list->first);

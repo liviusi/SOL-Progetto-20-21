@@ -26,6 +26,8 @@
 #include <wrappers.h>
 
 #define BUFFERLEN 2048
+#define ANSWERLEN 2
+#define CHUNK 100
 
 #define GET_MESSAGE_SIZE(dest, pathname, buffer, buffer_size, dirname) \
 	dest = 0; \
@@ -34,60 +36,6 @@
 	if (buffer) dest += buffer_size + 1; \
 	dest += (size_t) snprintf(0, 0, "%lu", buffer_size) + 1;\
 	if (dirname) dest += strlen(dirname);
-
-#define HANDLER \
-{ \
-	fprintf(stderr, "[%d] sending %s\n", __LINE__, buffer); \
-	if (writen((long) socket_fd, (void*) buffer, BUFFERLEN) == -1) \
-	{ \
-		err = errno; \
-		goto failure; \
-	} \
-	memset(buffer, 0, BUFFERLEN); \
-	int answer; \
-	if (readn((long) socket_fd, (void*) buffer, BUFFERLEN) == -1) \
-	{ \
-		err = errno; \
-		goto failure; \
-	} \
-	fprintf(stderr, "[%d] received %s\n", __LINE__, buffer); \
-	if (sscanf(buffer, "%d", &answer) != 1) \
-	{ \
-		err = EBADMSG; \
-		goto failure; \
-	} \
-	switch (answer) \
-	{ \
-		case OP_SUCCESS: \
-			break; \
-		case OP_FAILURE: \
-			if (readn((long) socket_fd, (void*) buffer, BUFFERLEN) == -1) \
-			{ \
-				err = errno; \
-				goto failure; \
-			} \
-			fprintf(stderr, "[%d] set errno to %s\n", __LINE__, buffer); \
-			if (sscanf(buffer, "%d", &err) != 1) \
-			{ \
-				err = EBADMSG; \
-				goto failure; \
-			} \
-			goto failure; \
-		case OP_FATAL: \
-			if (readn((long) socket_fd, (void*) buffer, BUFFERLEN) == -1) \
-			{ \
-				err = errno; \
-				goto failure; \
-			} \
-			fprintf(stderr, "[%d] set errno to %s\n", __LINE__, buffer); \
-			if (sscanf(buffer, "%d", &err) != 1) \
-			{ \
-				err = EBADMSG; \
-				goto failure; \
-			} \
-			goto fatal; \
-	} \
-}
 
 
 static int socket_fd = -1;
@@ -214,7 +162,7 @@ openFile(const char* pathname, int flags)
 	memset(buffer, 0, BUFFERLEN);
 	snprintf(buffer, BUFFERLEN, "%d %s %d", OPEN, pathname, flags);
 
-	HANDLER;
+	//HANDLER;
 
 	PRINT_IF(print_enabled, "openFile %s %d : SUCCESS.\n", pathname, flags);
 	return 0;
@@ -268,7 +216,7 @@ readFile(const char* pathname, void** buf, size_t* size)
 	else
 		snprintf(buffer, BUFFERLEN, "%d %s 0", READ, pathname);
 
-	HANDLER;
+	//HANDLER;
 
 	void* read_buffer = NULL;
 	size_t read_size = 0;
@@ -344,81 +292,32 @@ writeFile(const char* pathname, const char* dirname)
 	*/
 
 	char buffer[BUFFERLEN];
+	char msg_size[MSG_SIZELEN];
+	bool _failure = false;
+	bool _fatal = false;
 	memset(buffer, 0, BUFFERLEN);
 	snprintf(buffer, BUFFERLEN, "%d %s", WRITE, pathname);
-	
-	HANDLER;
 
-	// handle evicted files
+	fprintf(stderr, "[%d] sending %s\n", __LINE__, buffer);
+	buffer[BUFFERLEN-1] = '\0';
+	if (writen((long) socket_fd, (void*) buffer, strlen(buffer) + 1) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
 	memset(buffer, 0, BUFFERLEN);
-	if (readn((long) socket_fd, (void*) buffer, BUFFERLEN) == -1)
-	{
-		err = errno;
-		goto failure;
-	}
-	unsigned long evicted_no = 0;
-	if (sscanf(buffer, "%lu", &evicted_no) != 1)
-	{
-		err = EBADMSG;
-		goto failure;
-	}
-	fprintf(stderr, "[%d] %lu files have been evicted.\n", __LINE__, evicted_no);
-	char* name = (char*) malloc(sizeof(char) * PATH_MAX);
-	if (!name) // enomem
-	{
-		err = errno;
-		goto fatal;
-	}
-	while (evicted_no != 0)
-	{
-		// reading file name and content size
-		memset(buffer, 0, BUFFERLEN);
-		size_t content_size = 0;
-		if (readn((long) socket_fd, (void*) buffer, BUFFERLEN) == -1)
-		{
-			err = errno;
-			goto failure;
-		}
-		fprintf(stderr, "[%d] Evicted file name and size: %s\n", __LINE__, buffer);
-		if (sscanf(buffer, "%lu:%s", &content_size, name) != 2)
-		{
-			err = EBADMSG;
-			goto failure;
-		}
-		char* contents = (char*) malloc(sizeof(char) * (content_size + 1));
-		if (!contents) // enomem
-		{
-			err = errno;
-			goto fatal;
-		}
-		// reading contents
-		memset(contents, 0, content_size + 1);
-		if (readn((long) socket_fd, (void*) contents, content_size) == -1)
-		{
-			err = errno;
-			goto failure;
-		}
-		if (dirname) // files are to be saved if and only if dirname has been specified
-		{
-			// prepend dirname to name
-			size_t dir_len = strlen(dirname);
-			if (dir_len + strlen(name) > PATH_MAX)
-			{
-				err = ENAMETOOLONG;
-				goto failure;
-			}
-			memmove(name + dir_len, name, strlen(name) + 1);
-			memcpy(name, dirname, dir_len);
-			if (savefile(name, contents) != 0)
-			{
-				err = errno;
-				goto failure;
-			}
-		}
-		free(contents);
-		evicted_no--;
-	}
-	free(name);
+	int answer;
+	
+	// handle evicted files
+	// prepend dirname to name
+	//size_t dir_len = strlen(dirname);
+	//if (dir_len + strlen(name) > PATH_MAX)
+	//{
+	//	err = ENAMETOOLONG;
+	//	goto failure;
+	//}
+	//memmove(name + dir_len, name, strlen(name) + 1);
+	//memcpy(name, dirname, dir_len);
 
 	if (dirname)
 	{
@@ -496,7 +395,7 @@ appendToFile(const char* pathname, void* buf, size_t size, const char* dirname)
 	else
 		snprintf(buffer, BUFFERLEN, "%d %s %s %lu", APPEND, pathname, (char*) buf, size);
 
-	HANDLER;
+	//HANDLER;
 
 	// handle evicted files
 
@@ -547,7 +446,7 @@ lockFile(const char* pathname)
 	memset(buffer, 0, BUFFERLEN);
 	snprintf(buffer, BUFFERLEN, "%d %s", LOCK, pathname);
 
-	HANDLER;
+	//HANDLER;
 
 	PRINT_IF(print_enabled, "lockFile %s : SUCCESS.\n", pathname);
 	return 0;
@@ -596,7 +495,7 @@ unlockFile(const char* pathname)
 	memset(buffer, 0, BUFFERLEN);
 	snprintf(buffer, BUFFERLEN, "%d %s", UNLOCK, pathname);
 
-	HANDLER;
+	//HANDLER;
 
 	PRINT_IF(print_enabled, "unlockFile %s : SUCCESS.\n", pathname);
 	return 0;
@@ -645,7 +544,7 @@ closeFile(const char* pathname)
 	memset(buffer, 0, BUFFERLEN);
 	snprintf(buffer, BUFFERLEN, "%d %s", CLOSE, pathname);
 
-	HANDLER;
+	//HANDLER;
 
 	PRINT_IF(print_enabled, "closeFile %s : SUCCESS.\n", pathname);
 	return 0;
@@ -693,7 +592,7 @@ removeFile(const char* pathname)
 	char buffer[BUFFERLEN];
 	memset(buffer, 0, BUFFERLEN);
 
-	HANDLER;
+	//HANDLER;
 
 	PRINT_IF(print_enabled, "removeFile %s : SUCCESS.\n", pathname);
 	return 0;
