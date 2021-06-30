@@ -404,6 +404,8 @@ worker_routine(void* arg)
 
 			case WRITE:
 				evicted = NULL;
+				evicted_file_name = NULL;
+				evicted_file_content = NULL;
 				// get pathname
 				memset(pathname, 0, MAXPATH);
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
@@ -426,12 +428,13 @@ worker_routine(void* arg)
 									(void**) &evicted_file_content), LinkedList_PopFront);
 						memset(request, 0, REQUESTLEN);
 						// it is assumed file contents are null terminated
+						// CONTENT IS NOT NULL TERMINATED
+						// THEREFORE A SEGFAULT OCCURS
 						snprintf(request, REQUESTLEN, "%lu:%s", strlen(evicted_file_content),
 									evicted_file_name);
 						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*)
 									request, REQUESTLEN), writen);
-						fprintf(stderr, "[%d] File content is about to be sent.\n%s", __LINE__,
-									evicted_file_content);
+						//fprintf(stderr, "[%d] File content is about to be sent.\n%s", __LINE__,evicted_file_content);
 						EXIT_IF_EQ(err, -1, writen((long) fd_ready, evicted_file_content,
 									strlen(evicted_file_content)), writen);
 						free(evicted_file_name); evicted_file_name = NULL;

@@ -3,19 +3,24 @@
  * @author Giacomo Trapani.
 */
 
-#define _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE // usleep
 
+#include <dirent.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
+#include <linked_list.h>
 #include <server_defines.h>
 #include <server_interface.h>
 #include <wrappers.h>
 
 #define COMMANDLEN 2
+#define MAX_NAME 128
+#define BUFFERLEN 512
 #define ARGUMENTLEN 2048
 
 #define VALID_COMMAND(character) \
@@ -43,11 +48,31 @@
 "-p : enables output on stdout.\n"
 
 /**
+ * @brief Returns true if and only if string is only
+ * made up of dots.
+*/
+static bool
+dots_only(const char dir[]);
+
+/**
+ * @brief Returns current working directory as a dynamically
+ * allocated buffer.
+*/
+static char*
+cwd();
+
+/**
+ * @brief Visits directory and all its subdirectories.
+*/
+static int
+list_files(const char dirname[], linked_list_t* list);
+
+/**
  * @brief Validates commands and arguments. It also sets
  * flags.
 */
 int
-validate(char** commands, char** arguments, int len);
+validate(const char** commands, const char** arguments, int len);
 
 bool h_set = false;
 char sockname[MAXPATH];
@@ -76,6 +101,14 @@ main(int argc, char* argv[])
 		EXIT_IF_EQ(arguments[i], NULL, (char*) malloc(sizeof(char) * ARGUMENTLEN), malloc);
 		memset(arguments[i], 0, ARGUMENTLEN);
 	}
+	// declarations
+	char flag; int msec = 1000;
+	int msec_sleeping = 0; // milliseconds client shall sleep between requests
+	char* tmp; char* token; char* saveptr;
+	char* dirname; int upto = 0; linked_list_t* R_files = NULL; char* filename = NULL;
+	int open_flags = 0;
+	struct timespec abstime = { .tv_nsec = 0, .tv_sec = time(0) + 10 };
+	char* read_contents = NULL; size_t read_size = 0;
 	// parse argv into commands to be executed
 	for (int i = 1; i < argc; i++)
 	{
@@ -108,17 +141,12 @@ main(int argc, char* argv[])
 	}
 	print_enabled = false;
 	exit_on_fatal_errors = true;
-	int err = validate(commands, arguments, argc-1);
+	int err = validate((const char**) commands, (const char**) arguments, argc-1);
 	if (err != 0)
 	{
 		fprintf(stderr, "Given input is not a valid sequence.\n");
 		goto cleanup;
 	}
-	char flag; int msec = 1000;
-	char* tmp; char* token; char* saveptr;
-	int open_flags = 0;
-	struct timespec abstime = { .tv_nsec = 0, .tv_sec = time(0) + 10 };
-	char* read_contents = NULL; size_t read_size = 0;
 	// execute commands
 	if (h_set)
 	{
@@ -137,6 +165,50 @@ main(int argc, char* argv[])
 				break;
 
 			case 'w':
+				// write directory
+				// get dirname from arguments
+				tmp = arguments[i];
+				// check whether a limit of files to be sent has been specified
+				if (strrchr(tmp, ',') == NULL) // no limit
+				{
+					fprintf(stderr, "NO LIMITS.\n");
+					R_files = LinkedList_Init(NULL);
+					if (!R_files) goto cleanup;
+					if (list_files(arguments[i], R_files) == -1)
+					{
+						if (errno == ENOMEM) goto cleanup;
+						else break;
+					}
+					while (LinkedList_GetNumberOfElements(R_files) != 0)
+					{
+						if (LinkedList_PopFront(R_files, &filename, NULL) == -1) goto cleanup;
+						fprintf(stderr, "filename : %s\n", filename);
+						SET_FLAG(open_flags, O_CREATE);
+						SET_FLAG(open_flags, O_LOCK);
+						openFile(filename, open_flags);
+						RESET_MASK(open_flags);
+						if (i + 2 < argc -1)
+						{
+							if (commands[i+2][0] == 'D')
+								writeFile(filename, arguments[i+2]);
+						}
+						else
+							writeFile(filename, NULL);
+						unlockFile(filename);
+						closeFile(filename);
+						usleep(1000 * msec_sleeping);
+						free(filename); filename = NULL;
+					}
+					LinkedList_Free(R_files); R_files = NULL;
+					break;
+
+				}
+				else
+				{
+					dirname = strtok_r(tmp, ",", &saveptr);
+					token = strtok_r(NULL, ",", &saveptr);
+					fprintf(stderr, "dirname = %s\nLIMIT = %s\n", dirname, token);
+				}
 				break;
 
 			case 'W':
@@ -158,6 +230,7 @@ main(int argc, char* argv[])
 						writeFile(tmp, NULL);
 					unlockFile(tmp);
 					closeFile(tmp);
+					usleep(1000 * msec_sleeping);
 					break;
 				}
 				else // multiple files
@@ -176,6 +249,7 @@ main(int argc, char* argv[])
 							writeFile(token, NULL);
 						unlockFile(token);
 						closeFile(token);
+						usleep(msec_sleeping * 1000);
 						token = strtok_r(NULL, ",", &saveptr);
 					}
 				}
@@ -191,8 +265,10 @@ main(int argc, char* argv[])
 					openFile(tmp, open_flags);
 					readFile(tmp, (void** )&read_contents, &read_size);
 					closeFile(tmp);
-					fprintf(stdout, "SIZE: %lu\tCONTENTS:\n%s", read_size, read_contents);
+					if (read_contents)
+						fprintf(stdout, "SIZE: %lu\tCONTENTS:\n%s", read_size, read_contents);
 					free(read_contents); read_contents = NULL;
+					usleep(1000 * msec_sleeping);
 					break;
 				}
 				else // multiple files
@@ -205,8 +281,10 @@ main(int argc, char* argv[])
 						openFile(token, open_flags);
 						readFile(token, (void**) &read_contents, &read_size);
 						closeFile(token);
-						fprintf(stdout, "SIZE: %lu\tCONTENTS:\n%s", read_size, read_contents);
+						if (read_contents)
+							fprintf(stdout, "SIZE: %lu\tCONTENTS:\n%s", read_size, read_contents);
 						free(read_contents); read_contents = NULL;
+						usleep(1000 * msec_sleeping);
 						token = strtok_r(NULL, ",", &saveptr);
 						
 					}
@@ -215,7 +293,7 @@ main(int argc, char* argv[])
 
 			case 't':
 				// set waiting time
-				sscanf(arguments[i], "%d", &msec);
+				sscanf(arguments[i], "%d", &msec_sleeping);
 				break;
 
 			case 'l':
@@ -226,6 +304,7 @@ main(int argc, char* argv[])
 				{
 					openFile(tmp, open_flags);
 					lockFile(tmp);
+					usleep(1000 * msec_sleeping);
 				}
 				else // multiple files
 				{
@@ -236,6 +315,7 @@ main(int argc, char* argv[])
 						openFile(token, open_flags);
 						lockFile(token);
 						closeFile(token);
+						usleep(1000 * msec_sleeping);
 						token = strtok_r(NULL, ",", &saveptr);
 					}
 				}
@@ -249,6 +329,7 @@ main(int argc, char* argv[])
 				{
 					openFile(tmp, open_flags);
 					unlockFile(tmp);
+					usleep(1000 * msec_sleeping);
 				}
 				else // multiple files
 				{
@@ -260,6 +341,7 @@ main(int argc, char* argv[])
 						unlockFile(token);
 						closeFile(token);
 						token = strtok_r(NULL, ",", &saveptr);
+						usleep(1000 * msec_sleeping);
 					}
 				}
 				break;
@@ -283,11 +365,70 @@ main(int argc, char* argv[])
 		}
 		free(commands);
 		free(arguments);
+		LinkedList_Free(R_files);
 		return 0;
 }
 
+static bool
+dots_only(const char dir[])
+{
+	int l = strlen(dir);
+
+	if (l > 0 && dir[l-1] == '.')
+		return true;
+	return false;
+}
+
+static char*
+cwd()
+{
+	char* buf = malloc(MAX_NAME * sizeof(char));
+	if (!buf) return NULL;
+	return getcwd(buf, MAX_NAME);
+}
+
+/**
+*/
+static int
+list_files(const char dirname[], linked_list_t* files)
+{
+	// changing directory in order to run opendir(".")
+	if (chdir(dirname) == -1) return 0;
+	DIR* dir;
+	if ((dir=opendir(".")) == NULL) return -1;
+	else
+	{
+		struct dirent *file;
+		while((errno = 0, file = readdir(dir)) != NULL)
+		{
+			if (file->d_type == DT_REG) // if regular file
+			{
+				char* buf = cwd();
+				if (buf == NULL) return -1;
+				char* path = (char*) malloc(sizeof(char) * BUFFERLEN);
+				memset(path, 0, BUFFERLEN);
+				snprintf(path, BUFFERLEN, "%s/%s", buf, file->d_name);
+				if (LinkedList_PushBack(files, path, strlen(path) + 1, NULL, 0) == -1) return -1;
+				free(path);
+				free(buf);
+			}
+			// do not loop over the same folder or its parents
+			else if (!dots_only(file->d_name))
+			{
+				if (list_files(file->d_name, files) != 0)
+				{
+					if (chdir("..") == -1) return -1;
+				}
+			}
+		}
+		if (errno != 0) return -1;
+		closedir(dir);
+	}
+	return 1;
+}
+
 int
-validate(char** commands, char** arguments, int len)
+validate(const char** commands, const char** arguments, int len)
 {
 	if (commands[0][0] == '\0') return 1;
 	for (int i = 0; i < len; i++)
@@ -326,11 +467,64 @@ validate(char** commands, char** arguments, int len)
 			print_enabled = true;
 			continue;
 		}
-		if (commands[i][0] == 'w' || commands[i][0] == 'W' || commands[i][0] == 'r' ||
-					commands[i][0] == 't' || commands[i][0] == 'u' || commands[i][0] == 'c')
+		// dangling commas and invalid arguments are not allowed
+		if (commands[i][0] == 'w')
 		{
-			// -w, -W, -r, t, u, c take an argument
 			if (arguments[i][0] == '\0') return 1;
+			if (strrchr(arguments[i], ',') == NULL) continue;
+			else
+			{
+				char* copy = (char*) malloc(sizeof(char) * (strlen(arguments[i]) + 1));
+				strcpy(copy, arguments[i]);
+				char* tmp = copy;
+				char* saveptr;
+				char* token = strtok_r(copy, ",", &saveptr);
+				// need to check what comes after the comma
+				token = strtok_r(NULL, ",", &saveptr);
+				if (!token)
+				{
+					free(tmp);
+					return 1;
+				}
+				int value;
+				// optional argument needs to be a number
+				if (sscanf(token, "%d", &value) != 1)
+				{
+					free(tmp);
+					return 1;
+				}
+				token = strtok_r(NULL, ",", &saveptr);
+				if (token)
+				{
+					free(tmp);
+					return 1;
+				}
+				free(tmp);
+				continue;
+			}
+		}
+		// dangling commas are not allowed
+		if (commands[i][0] == 'W' || commands[i][0] == 'r' ||
+					commands[i][0] == 'c' || commands[i][0] == 'u')
+		{
+			if (arguments[i][0] == '\0') return 1;
+			if (strrchr(arguments[i], ',') == NULL) continue;
+			if (arguments[i][strlen(arguments[i]) - 1] == ',') return 1;
+		}
+		// an optional numeric number is expected
+		if (commands[i][0] == 'R')
+		{
+			if (arguments[i][0] == '\0') continue;
+			int tmp;
+			if (sscanf(arguments[i], "%d", &tmp) != 1) return 1;
+			continue;
+		}
+		// a numeric argument is expected
+		if (commands[i][0] == 't')
+		{
+			if (arguments[i][0] == '\0') return 1;
+			int tmp;
+			if (sscanf(arguments[i], "%d", &tmp) != 1) return 1;
 			continue;
 		}
 
@@ -340,14 +534,14 @@ validate(char** commands, char** arguments, int len)
 		if (commands[i][0] == 'l') // if a file is to be locked by client
 		{
 			// client must either remove or unlock the file after
-			char* tmp = arguments[i]; // name of file to be locked
+			const char* copy = arguments[i]; // name of file to be locked
 			int ok = 0; // resetting ok
 			for (int j = i+1; j < len; j++)
 			{
 				if (commands[j][0] == 'c' || commands[j][0] == 'u')
 				{
 					// check whether the file has the same name
-					if (strcmp(tmp, arguments[j]) == 0)
+					if (strcmp(copy, arguments[j]) == 0)
 					{
 						ok = 1;
 						break;
@@ -361,6 +555,7 @@ validate(char** commands, char** arguments, int len)
 		{
 			// there must be a reading operation before
 			if (i == 0) return 1;
+			if (arguments[i][0] == '\0') return 1;
 			if (commands[i-2][0] != 'r' && commands[i-2][0] != 'R' &&
 						commands[i-1][0] != 'R')
 				return 1;
@@ -370,6 +565,7 @@ validate(char** commands, char** arguments, int len)
 		{
 			// there must be a writing operation before
 			if (i == 0) return 1;
+			if (arguments[i][0] == '\0') return 1;
 			if (commands[i-2][0] != 'w' && commands[i-2][0] != 'W')
 				return 1;
 			continue;

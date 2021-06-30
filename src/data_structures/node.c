@@ -37,15 +37,17 @@ Node_Create(const char* key, size_t key_size, const void* data,
 	GOTO_LABEL_IF_EQ(tmp, NULL, err, init_failure);
 	if (key_size != 0)
 	{
-		tmp_key = (char*) malloc(key_size);
+		tmp_key = (char*) malloc(key_size + 1);
 		GOTO_LABEL_IF_EQ(tmp_key, NULL, err, init_failure);
+		memset(tmp_key, 0, key_size + 1);
 		memcpy(tmp_key, key, key_size);
 	}
 	tmp->key = tmp_key;
 	if (data_size != 0)
 	{
-		tmp_data = malloc(data_size);
+		tmp_data = malloc(data_size + 1);
 		GOTO_LABEL_IF_EQ(tmp_data, NULL, err, init_failure);
+		memset(tmp_data, 0, data_size + 1);
 		memcpy(tmp_data, data, data_size);
 	}
 	tmp->data = tmp_data;
@@ -145,15 +147,15 @@ Node_CopyData(const node_t* node, void** dataptr)
 		*dataptr = NULL;
 		return len;
 	}
-	void* tmp;
-	if ((tmp = malloc(len + 1)) == NULL)
+	char* tmp;
+	if ((tmp = (char*) malloc(sizeof(char) * (len + 2))) == NULL)
 	{
 		errno = ENOMEM;
 		return 0;
 	}
-	memset(tmp, 0, len+1);
-	memcpy(tmp, node->data, len);
-	*dataptr = tmp;
+	strcpy(tmp, (char*) node->data);
+	tmp[len+1] = '\0';
+	*dataptr = (void*) tmp;
 	return len;
 }
 

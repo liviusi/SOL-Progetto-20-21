@@ -18,7 +18,7 @@ OBJS-RWLOCK = obj/rwlock.o obj/test_rwlock.o
 OBJS-CONFIG = obj/config.o obj/test_config.o
 OBJS-STORAGE = obj/node.o obj/linked_list.o obj/hashtable.o obj/rwlock.o obj/config.o obj/storage.o obj/test_storage.o
 OBJS-SERVER = obj/node.o obj/linked_list.o obj/hashtable.o obj/rwlock.o obj/config.o obj/storage.o obj/bounded_buffer.o obj/server.o
-OBJS-CLIENT = obj/server_interface.o obj/client.o
+OBJS-CLIENT = obj/node.o obj/linked_list.o obj/server_interface.o obj/client.o
 
 obj/node.o:
 	$(CC) $(CFLAGS) $(INCLUDES) -c src/data_structures/node.c $(LIBS)
