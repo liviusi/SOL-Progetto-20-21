@@ -40,8 +40,6 @@ typedef struct _stored_file
 	// whoever called open on this file with O_CREATE and O_LOCK may call write on this file
 	int potential_writer; // will be set to 0 if there is none
 	rwlock_t* rwlock; // used for multithreading purposes
-	pthread_mutex_t mutex_locked; // mutex used to wait when calling lockFile
-	pthread_cond_t cond_locked; // condition variable used when waiting on lock to be released
 } stored_file_t;
 
 /**
@@ -62,33 +60,27 @@ StoredFile_Init(const char* name, const void* contents, size_t contents_size)
 		errno = EINVAL;
 		return NULL;
 	}
+
 	stored_file_t* tmp = NULL;
 	char* tmp_name = NULL;
 	void* tmp_contents = NULL;
 	linked_list_t* tmp_called_open = NULL;
 	rwlock_t* tmp_lock = NULL;
-	pthread_mutex_t tmp_mutex;
-	pthread_cond_t tmp_cond;
-	bool cond_initialized = false;
-	int err, errnosave;
+	int errnocopy;
 
-	pthread_mutex_init(&tmp_mutex, NULL);
-	err = pthread_cond_init(&tmp_cond, NULL);
-	GOTO_LABEL_IF_NEQ(err, 0, errnosave, init_failure);
-	cond_initialized = true;
 	tmp = (stored_file_t*) malloc(sizeof(stored_file_t));
-	GOTO_LABEL_IF_EQ(tmp, NULL, errnosave, init_failure);
+	GOTO_LABEL_IF_EQ(tmp, NULL, errnocopy, init_failure);
 	tmp_name = (char*) malloc(strlen(name) + 1);
-	GOTO_LABEL_IF_EQ(tmp_name, NULL, errnosave, init_failure);
+	GOTO_LABEL_IF_EQ(tmp_name, NULL, errnocopy, init_failure);
 	if (contents_size != 0 && contents)
 	{
 		tmp_contents = (void*) malloc(contents_size);
-		GOTO_LABEL_IF_EQ(tmp_contents, NULL, errnosave, init_failure);
+		GOTO_LABEL_IF_EQ(tmp_contents, NULL, errnocopy, init_failure);
 	}
 	tmp_called_open = LinkedList_Init(free);
-	GOTO_LABEL_IF_EQ(tmp_called_open, NULL, errnosave, init_failure);
+	GOTO_LABEL_IF_EQ(tmp_called_open, NULL, errnocopy, init_failure);
 	tmp_lock = RWLock_Init();
-	GOTO_LABEL_IF_EQ(tmp_lock, NULL, errnosave, init_failure);
+	GOTO_LABEL_IF_EQ(tmp_lock, NULL, errnocopy, init_failure);
 
 	strncpy(tmp_name, name, strlen(name) + 1);
 	memcpy(tmp_contents, contents, contents_size);
@@ -99,20 +91,16 @@ StoredFile_Init(const char* name, const void* contents, size_t contents_size)
 	tmp->called_open = tmp_called_open;
 	tmp->potential_writer = 0;
 	tmp->rwlock = tmp_lock;
-	tmp->mutex_locked = tmp_mutex;
-	tmp->cond_locked = tmp_cond;
 
 	return tmp;
 
 	init_failure:
-		pthread_mutex_destroy(&tmp_mutex);
-		if (cond_initialized) pthread_cond_destroy(&tmp_cond);
 		free(tmp_name);
 		free(tmp_contents);
 		LinkedList_Free(tmp_called_open);
 		RWLock_Free(tmp_lock);
 		free(tmp);
-		errno = errnosave;
+		errno = errnocopy;
 		return NULL;
 }
 /**
@@ -263,12 +251,16 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 
 	// acquire mutex over storage
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(storage->lock));
+	fprintf(stderr, "[%s:%d] ReadLock acquired over storage.\n", __FILE__, __LINE__);
+
 	// check whether file exists
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
 
 	if ((exists == 1) && (IS_O_CREATE_SET(flags))) // file exists, creation flag is set
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+		fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+
 		errno = EEXIST;
 		return OP_FAILURE;
 	}
@@ -277,12 +269,15 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 		if (!(IS_O_CREATE_SET(flags)))
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+
 			errno = ENOENT;
 			return OP_FAILURE;
 		}
 		if (storage->files_no == storage->max_files_no)
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
 			errno = ENOSPC;
 			return OP_FAILURE;
 		}
@@ -315,12 +310,17 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 					HashTable_GetPointerToData(storage->files, (void*) pathname));
 		// acquire file lock
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->rwlock));
+		fprintf(stderr, "[%s:%d] ReadLock acquired over file.\n", __FILE__, __LINE__);
 		// the same client cannot open a file it has already opened
 		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Contains(file->called_open, str_client));
 		if (err == 1) // client has already opened this file
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
+
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+
 			errno = EBADF;
 			return OP_FAILURE;
 		}
@@ -331,29 +331,47 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 				if (file->lock_owner == 0) // no client is already holding it
 				{
 					RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+					fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
+
 					RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
+					fprintf(stderr, "[%s:%d] WriteLock acquired over file.\n", __FILE__, __LINE__);
+
 					file->lock_owner = client;
 					RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
+					fprintf(stderr, "[%s:%d] WriteLock released over file.\n", __FILE__, __LINE__);
+
 				}
 				else // a client already owns this file's lock
 				{
 					RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+					fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
+
 					RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+					fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+
 					errno = EACCES;
 					return OP_FAILURE;
 				}
 			}
 			else RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
+
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
+			fprintf(stderr, "[%s:%d] WriteLock acquired over file.\n", __FILE__, __LINE__);
+
 			// add the client to the list of the ones who opened this file
 			RETURN_FATAL_IF_NEQ(err, 0 , LinkedList_PushFront(file->called_open,
 						str_client, len+1, NULL, 0));
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] WriteLock released over file.\n", __FILE__, __LINE__);
+
 		}
 
 	}
 
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+	fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+
 	return OP_SUCCESS;
 }
 
@@ -374,6 +392,8 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 	*buf = NULL; *size = 0; // initializing both params to improve readability
 	snprintf(str_client, BUFFERLEN, "%d", client); // convert int client to string
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(storage->lock));
+	fprintf(stderr, "[%s:%d] ReadLock acquired over storage.\n", __FILE__, __LINE__);
+
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
 
 	if (exists == 1) // file is inside the storage
@@ -381,11 +401,14 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 		RETURN_FATAL_IF_EQ(file, NULL, (stored_file_t*)
 					HashTable_GetPointerToData(storage->files, (void*) pathname));
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->rwlock));
+		fprintf(stderr, "[%s:%d] ReadLock acquired over file.\n", __FILE__, __LINE__);
 		// a client already owns this file's lock
 		if (file->lock_owner != 0 && file->lock_owner != client)
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
 			errno = EACCES;
 			return OP_FAILURE;
 		}
@@ -393,7 +416,9 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 		if (err == 0) // file has not been opened by this client
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
 			errno = EACCES;
 			return OP_FAILURE;
 		}
@@ -403,7 +428,9 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 			if (file->contents_size == 0 || !file->contents)
 			{
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+				fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+				fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
 				return OP_SUCCESS;
 			}
 			else // file is not empty
@@ -412,10 +439,15 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 				RETURN_FATAL_IF_EQ(tmp_contents, NULL, malloc(tmp_size));
 				memcpy(tmp_contents, file->contents, tmp_size);
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+				fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
+				fprintf(stderr, "[%s:%d] WriteLock acquired over file.\n", __FILE__, __LINE__);
+
 				file->potential_writer = 0; // writing this file is not allowed
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
+				fprintf(stderr, "[%s:%d] WriteLock released over file.\n", __FILE__, __LINE__);
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+				fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
 
 			}
 		}
@@ -423,6 +455,7 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 	else // file is not inside the storage
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+		fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
 		errno = EBADF;
 		return OP_FAILURE;
 	}
@@ -525,6 +558,8 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 
 	// as files may be deleted, no readers are allowed on storage
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(storage->lock));
+	fprintf(stderr, "[%s:%d] WriteLock acquired over storage.\n", __FILE__, __LINE__);
+
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
 
 	if (exists == 1) // file is inside the storage
@@ -539,6 +574,7 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 			if (evicted) *evicted = tmp_evicted;
 			free(pathname_contents);
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
 			errno = EACCES;
 			return OP_FAILURE;
 		}
@@ -569,6 +605,7 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 			{
 				free(pathname_contents);
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+				fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
 				errno = EIDRM;
 				return OP_FAILURE;
 			}
@@ -583,11 +620,15 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 		stored_file->potential_writer = 0;
 		storage->storage_size+=length;
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+		fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 	}
 	else
 	{
 		free(pathname_contents);
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+		fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 		errno = EBADF;
 		return OP_FAILURE;
 	}
@@ -616,6 +657,8 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 
 	snprintf(str_client, BUFFERLEN, "%d", client);
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(storage->lock));
+	fprintf(stderr, "[%s:%d] WriteLock acquired over storage.\n", __FILE__, __LINE__);
+
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
 
 	if (exists == 1) // file is inside the storage
@@ -627,6 +670,8 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 		if (err == 0)
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 			errno = EACCES;
 			return OP_FAILURE;
 		}
@@ -634,6 +679,8 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 		if (file->lock_owner != client && file->lock_owner != 0)
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 			errno = EACCES;
 			return OP_FAILURE;
 		}
@@ -641,6 +688,8 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 		if (size == 0 || buf == NULL)
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 			return OP_SUCCESS;
 		}
 		// handle eventual file deletion
@@ -670,6 +719,8 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 			if (failure)
 			{
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+				fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 				errno = EIDRM;
 				return OP_FAILURE;
 			}
@@ -678,6 +729,8 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 		if (!new_contents) // realloc failed
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 			errno = ENOMEM;
 			return OP_FATAL;
 		}
@@ -687,10 +740,14 @@ Storage_appendToFile(storage_t* storage, const char* pathname, void* buf,
 		file->potential_writer = 0;
 		storage->storage_size += size;
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+		fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 	}
 	else // file is not inside the storage
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+		fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 		errno = EBADF;
 		return OP_FAILURE;
 	}
@@ -711,6 +768,7 @@ Storage_lockFile(storage_t* storage, const char* pathname, int client)
 	char str_client[BUFFERLEN];
 	snprintf(str_client, BUFFERLEN, "%d", client);
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(storage->lock));
+	fprintf(stderr, "[%s:%d] ReadLock acquired over storage.\n", __FILE__, __LINE__);
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
 
 	if (exists == 1) // file is inside the storage
@@ -719,6 +777,7 @@ Storage_lockFile(storage_t* storage, const char* pathname, int client)
 					HashTable_GetPointerToData(storage->files, (void*) pathname));
 
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->rwlock));
+		fprintf(stderr, "[%s:%d] ReadLock acquired over file.\n", __FILE__, __LINE__);
 
 		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Contains(file->called_open, str_client));
 		if (err == 1) // file has been opened by client
@@ -726,7 +785,9 @@ Storage_lockFile(storage_t* storage, const char* pathname, int client)
 			if (client == file->lock_owner) // client already owns the lock
 			{
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+				fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+				fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
 
 				return OP_SUCCESS;
 			}
@@ -735,25 +796,36 @@ Storage_lockFile(storage_t* storage, const char* pathname, int client)
 			// needs to be acquired in write mode.
 
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
-
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
+		
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
-
-			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->mutex_locked)));
-
-			while (file->lock_owner != 0 && file->lock_owner != client)
-				pthread_cond_wait(&(file->cond_locked), &(file->mutex_locked)); // cannot fail
+			fprintf(stderr, "[%s:%d] WriteLock acquired over file.\n", __FILE__, __LINE__);
+			// some client already owns lock
+			if (file->lock_owner != 0 && file->lock_owner != client)
+			{
+				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
+				fprintf(stderr, "[%s:%d] WriteLock released over file.\n", __FILE__, __LINE__);
+				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+				fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+				errno = EPERM;
+				return OP_FAILURE;
+			}
 			file->lock_owner = client;
 			file->potential_writer = 0;
 
-			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->mutex_locked)));
-
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] WriteLock released over file.\n", __FILE__, __LINE__);
+
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+
 		}
 		else // file has yet to be opened by client
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
 
 			errno = EACCES;
 			return OP_FAILURE;
@@ -762,6 +834,8 @@ Storage_lockFile(storage_t* storage, const char* pathname, int client)
 	else // file is not inside the storage
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+		fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+
 		errno = EBADF;
 		return OP_FAILURE;
 	}
@@ -782,6 +856,7 @@ Storage_unlockFile(storage_t* storage, const char* pathname, int client)
 	char str_client[BUFFERLEN];
 	snprintf(str_client, BUFFERLEN, "%d", client);
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(storage->lock));
+	fprintf(stderr, "[%s:%d] ReadLock acquired over storage.\n", __FILE__, __LINE__);
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
 	if (exists == 1) // file is inside the storage
 	{
@@ -789,6 +864,7 @@ Storage_unlockFile(storage_t* storage, const char* pathname, int client)
 					HashTable_GetPointerToData(storage->files, (void*) pathname));
 
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->rwlock));
+		fprintf(stderr, "[%s:%d] ReadLock acquired over file.\n", __FILE__, __LINE__);
 
 		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Contains(file->called_open, str_client));
 		if (err == 1) // file has been opened by client
@@ -796,7 +872,9 @@ Storage_unlockFile(storage_t* storage, const char* pathname, int client)
 			if (client != file->lock_owner) // client does not own the lock.
 			{
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+				fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+				fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
 
 				errno = EACCES;
 				return OP_FAILURE;
@@ -805,23 +883,28 @@ Storage_unlockFile(storage_t* storage, const char* pathname, int client)
 			// to edit file struct params, lock
 			// needs to be acquired in write mode.
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
 
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
+			fprintf(stderr, "[%s:%d] WriteLock acquired over file.\n", __FILE__, __LINE__);
 
-			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_lock(&(file->mutex_locked)));
 			file->lock_owner = 0;
 			file->potential_writer = 0;
-			pthread_cond_signal(&(file->cond_locked));
-			RETURN_FATAL_IF_NEQ(err, 0, pthread_mutex_unlock(&(file->mutex_locked)));
 
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] WriteLock released over file.\n", __FILE__, __LINE__);
+
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
 
 		}
 		else // file has yet to be opened by client
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+
 
 			errno = EACCES;
 			return OP_FAILURE;
@@ -831,6 +914,8 @@ Storage_unlockFile(storage_t* storage, const char* pathname, int client)
 	else // file is not inside the storage
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+		fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+
 		errno = EBADF;
 		return OP_FAILURE;
 	}
@@ -851,10 +936,13 @@ Storage_closeFile(storage_t* storage, const char* pathname, int client)
 	char str_client[BUFFERLEN];
 	snprintf(str_client, BUFFERLEN, "%d", client);
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(storage->lock));
+	fprintf(stderr, "[%s:%d] ReadLock acquired over storage.\n", __FILE__, __LINE__);
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
 	if (exists == 0) // file is not inside the storage
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+		fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+
 		errno = EBADF;
 		return OP_FAILURE;
 	}
@@ -866,26 +954,38 @@ Storage_closeFile(storage_t* storage, const char* pathname, int client)
 
 		// file needs to be edited in write mode
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->rwlock));
+		fprintf(stderr, "[%s:%d] ReadLock acquired over file.\n", __FILE__, __LINE__);
 
 		// checking whether client has opened the file
 		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Contains(file->called_open, str_client));
 		if (err == 0) // file has not been opened by client
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock((file->rwlock)));
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
+
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+
 			errno = EACCES;
 			return OP_FAILURE;
 		}
 		else // file has been opened: now closing it
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock((file->rwlock)));
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
+			fprintf(stderr, "[%s:%d] WriteLock acquired over file.\n", __FILE__, __LINE__);
+
 			RETURN_FATAL_IF_NEQ(err, 0, LinkedList_Remove(file->called_open, str_client));
 			file->potential_writer = 0;
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] WriteLock released over file.\n", __FILE__, __LINE__);
+
 		}
 	}
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+	fprintf(stderr, "[%s:%d] ReadLock released over storage.\n", __FILE__, __LINE__);
+
 	return OP_SUCCESS;
 }
 
@@ -904,9 +1004,10 @@ Storage_removeFile(storage_t* storage, const char* pathname, int client)
 
 	snprintf(str_client, BUFFERLEN, "%d", client);
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(storage->lock));
+	fprintf(stderr, "[%s:%d] WriteLock acquired over storage.\n", __FILE__, __LINE__);
+
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
 
-	fprintf(stderr, "[%s:%d] WL acquired over storage.\n", __FILE__, __LINE__);
 	if (exists == 1) // file is inside storage
 	{
 		RETURN_FATAL_IF_EQ(file, NULL, (stored_file_t*)
@@ -916,12 +1017,16 @@ Storage_removeFile(storage_t* storage, const char* pathname, int client)
 		if (err == 0)
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 			errno = EACCES;
 			return OP_FAILURE;
 		}
 		if (file->lock_owner != client)
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+			fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 			errno = EACCES;
 			return OP_FAILURE;
 		}
@@ -931,10 +1036,14 @@ Storage_removeFile(storage_t* storage, const char* pathname, int client)
 		RETURN_FATAL_IF_EQ(err, -1, HashTable_DeleteNode(storage->files, (void*) pathname));
 		RETURN_FATAL_IF_EQ(err, -1, LinkedList_Remove(storage->sorted_files, pathname));
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+		fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 	}
 	else
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
+		fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
+
 		errno = EBADF;
 		return OP_FAILURE;
 	}

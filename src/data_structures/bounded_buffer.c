@@ -31,7 +31,7 @@ BoundedBuffer_Init(size_t capacity)
 		errno = EINVAL;
 		return NULL;
 	}
-	int err, errnosave;
+	int err, errnocopy;
 	linked_list_t* elems = NULL;
 	pthread_mutex_t mutex;
 	pthread_cond_t full;
@@ -41,15 +41,15 @@ BoundedBuffer_Init(size_t capacity)
 
 	err = pthread_mutex_init(&mutex, NULL);
 	err = pthread_cond_init(&full, NULL);
-	GOTO_LABEL_IF_NEQ(err, 0, errnosave, failure);
+	GOTO_LABEL_IF_NEQ(err, 0, errnocopy, failure);
 	full_initialized = true;
 	err = pthread_cond_init(&empty, NULL);
-	GOTO_LABEL_IF_NEQ(err, 0, errnosave, failure);
+	GOTO_LABEL_IF_NEQ(err, 0, errnocopy, failure);
 	empty_initialized = true;
 	elems = LinkedList_Init(NULL);
-	GOTO_LABEL_IF_EQ(elems, NULL, errnosave, failure);
+	GOTO_LABEL_IF_EQ(elems, NULL, errnocopy, failure);
 	tmp = (bounded_buffer_t*) malloc(sizeof(bounded_buffer_t));
-	GOTO_LABEL_IF_EQ(tmp, NULL, errnosave, failure);
+	GOTO_LABEL_IF_EQ(tmp, NULL, errnocopy, failure);
 
 	tmp->capacity = capacity;
 	tmp->elems = elems;
@@ -64,7 +64,7 @@ BoundedBuffer_Init(size_t capacity)
 		if (full_initialized) pthread_cond_destroy(&full);
 		if (empty_initialized) pthread_cond_destroy(&full);
 		LinkedList_Free(elems);
-		errno = errnosave;
+		errno = errnocopy;
 		return NULL;
 }
 

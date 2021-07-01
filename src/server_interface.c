@@ -684,69 +684,72 @@ lockFile(const char* pathname)
 	*/
 
 	char buffer[REQUESTLEN];
-	memset(buffer, 0, REQUESTLEN);
-	snprintf(buffer, REQUESTLEN, "%d %s", LOCK, pathname);
+	while (1)
+	{
+		memset(buffer, 0, REQUESTLEN);
+		snprintf(buffer, REQUESTLEN, "%d %s", LOCK, pathname);
 
-	// it is necessary to send the whole buffer at this point
-	if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)
-	{
-		err = errno;
-		goto failure;
-	}
-	// read actual output
-	char answer_str[OPVALUE_LEN];
-	memset(answer_str, 0, OPVALUE_LEN);
-	if (readn((long) fd_socket, (void*) answer_str, OPVALUE_LEN) == -1)
-	{
-		err = errno;
-		goto failure;
-	}
-	// check whether output is legal
-	int answer;
-	if (sscanf(answer_str, "%d", &answer) != 1)
-	{
-		err = EBADMSG;
-		goto failure;
-	}
-	char errno_str[ERRNOLEN];
-	// handle output
-	switch (answer)
-	{
-		case OP_SUCCESS:
-			break;
-
-		case OP_FAILURE:
-			// read errno value
-			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
-			{
-				err = errno;
-				goto failure;
-			}
-			if (sscanf(errno_str, "%d", &err) != 1)
-			{
-				err = EBADMSG;
-				goto failure;
-			}
+		// it is necessary to send the whole buffer at this point
+		if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)
+		{
+			err = errno;
 			goto failure;
+		}
+		// read actual output
+		char answer_str[OPVALUE_LEN];
+		memset(answer_str, 0, OPVALUE_LEN);
+		if (readn((long) fd_socket, (void*) answer_str, OPVALUE_LEN) == -1)
+		{
+			err = errno;
+			goto failure;
+		}
+		// check whether output is legal
+		int answer;
+		if (sscanf(answer_str, "%d", &answer) != 1)
+		{
+			err = EBADMSG;
+			goto failure;
+		}
+		char errno_str[ERRNOLEN];
+		// handle output
+		switch (answer)
+		{
+			case OP_SUCCESS:
+				goto success;
 
-		case OP_FATAL:
-			// read errno value
-			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
-			{
-				err = errno;
-				goto failure;
-			}
-			if (sscanf(errno_str, "%d", &err) != 1)
-			{
-				err = EBADMSG;
-				goto failure;
-			}
-			goto fatal;
+			case OP_FAILURE:
+				// read errno value
+				if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+				{
+					err = errno;
+					goto failure;
+				}
+				if (sscanf(errno_str, "%d", &err) != 1)
+				{
+					err = EBADMSG;
+					goto failure;
+				}
+				if (err != EPERM) goto failure;
+
+			case OP_FATAL:
+				// read errno value
+				if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+				{
+					err = errno;
+					goto failure;
+				}
+				if (sscanf(errno_str, "%d", &err) != 1)
+				{
+					err = EBADMSG;
+					goto failure;
+				}
+				goto fatal;
+		}
 	}
 
-
-	PRINT_IF(print_enabled, "lockFile %s : SUCCESS.\n", pathname);
-	return 0;
+	success:
+		PRINT_IF(print_enabled, "lockFile %s : SUCCESS.\n", pathname);
+		return 0;
 
 	failure:
 		strerror_r(err, error_string, REQUESTLEN);
@@ -994,11 +997,12 @@ removeFile(const char* pathname)
 	 * The actual removal will be handled by the server;
 	 * the client will send a buffer requesting it.
 	 * The buffer will follow the following format:
-	 * OPCODE(CLOSE) PATHNAME.
+	 * OPCODE(REMOVE) PATHNAME.
 	*/
 
 	char buffer[REQUESTLEN];
 	memset(buffer, 0, REQUESTLEN);
+	snprintf(buffer, REQUESTLEN, "%d %s", REMOVE, pathname);
 
 	// it is necessary to send the whole buffer at this point
 	if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)

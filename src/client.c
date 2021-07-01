@@ -580,7 +580,7 @@ validate(const char** commands, const char** arguments, int len)
 			}
 		}
 		// dangling commas are not allowed
-		if (commands[i][0] == 'W' || commands[i][0] == 'r' ||
+		if (commands[i][0] == 'W' || commands[i][0] == 'r' || commands[i][0] == 'l' ||
 					commands[i][0] == 'c' || commands[i][0] == 'u')
 		{
 			if (arguments[i][0] == '\0') return 1;
@@ -607,26 +607,6 @@ validate(const char** commands, const char** arguments, int len)
 		// checking whether the commands given
 		// are a valid input sequence
 
-		if (commands[i][0] == 'l') // if a file is to be locked by client
-		{
-			// client must either remove or unlock the file after
-			const char* copy = arguments[i]; // name of file to be locked
-			int ok = 0; // resetting ok
-			for (int j = i+1; j < len; j++)
-			{
-				if (commands[j][0] == 'c' || commands[j][0] == 'u')
-				{
-					// check whether the file has the same name
-					if (strcmp(copy, arguments[j]) == 0)
-					{
-						ok = 1;
-						break;
-					}
-				}
-			}
-			if (!ok) return 1;
-			continue;
-		}
 		if (commands[i][0] == 'd') // if files are to be saved
 		{
 			// there must be a reading operation before

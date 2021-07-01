@@ -51,23 +51,23 @@
 	}
 /**
  * @brief Goes to label if variable is not equal to value.
- * @param errnosave will be used to store errno value
+ * @param errnocopy will be used to store errno value
 */
-#define GOTO_LABEL_IF_NEQ(variable, value, errnosave, label) \
+#define GOTO_LABEL_IF_NEQ(variable, value, errnocopy, label) \
 	if (variable != value) \
 	{ \
-		errnosave = errno; \
+		errnocopy = errno; \
 		goto label; \
 	}
 
 /**
  * @brief Goes to label if variable is equal to value.
- * @param errnosave will be used to store errno value
+ * @param errnocopy will be used to store errno value
 */
-#define GOTO_LABEL_IF_EQ(variable, value, errnosave, label) \
+#define GOTO_LABEL_IF_EQ(variable, value, errnocopy, label) \
 	if (variable == value) \
 	{ \
-		errnosave = errno; \
+		errnocopy = errno; \
 		goto label; \
 	}
 

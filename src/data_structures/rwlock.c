@@ -23,20 +23,20 @@ struct _rwlock
 rwlock_t*
 RWLock_Init()
 {
-	int err, errnosave;
+	int err, errnocopy;
 	rwlock_t* tmp = NULL;
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
 	bool mutex_initialized = false, cond_initialized = false;
 
 	err = pthread_mutex_init(&mutex, NULL);
-	GOTO_LABEL_IF_NEQ(err, 0, errnosave, failure);
+	GOTO_LABEL_IF_NEQ(err, 0, errnocopy, failure);
 	mutex_initialized = true;
 	err = pthread_cond_init(&cond, NULL);
-	GOTO_LABEL_IF_NEQ(err, 0, errnosave, failure);
+	GOTO_LABEL_IF_NEQ(err, 0, errnocopy, failure);
 	cond_initialized = true;
 	tmp = (rwlock_t*) malloc(sizeof(rwlock_t));
-	GOTO_LABEL_IF_EQ(tmp, NULL, errnosave, failure);
+	GOTO_LABEL_IF_EQ(tmp, NULL, errnocopy, failure);
 
 	tmp->cond = cond;
 	tmp->mutex = mutex;
@@ -48,7 +48,7 @@ RWLock_Init()
 		if (mutex_initialized) pthread_mutex_destroy(&mutex);
 		if (cond_initialized) pthread_cond_destroy(&cond);
 		free(tmp);
-		errno = errnosave;
+		errno = errnocopy;
 		return NULL;
 }
 
