@@ -27,15 +27,6 @@
 #define ERRORSTRINGLEN 128
 #define OPVALUE_LEN 2
 
-#define GET_MESSAGE_SIZE(dest, pathname, buffer, buffer_size, dirname) \
-	dest = 0; \
-	dest += 2; \
-	if (pathname) dest += strlen(pathname) + 1; \
-	if (buffer) dest += buffer_size + 1; \
-	dest += (size_t) snprintf(0, 0, "%lu", buffer_size) + 1;\
-	if (dirname) dest += strlen(dirname);
-
-
 static int fd_socket = -1;
 static char socketpath[MAXPATH];
 bool print_enabled = true;
@@ -490,7 +481,6 @@ writeFile(const char* pathname, const char* dirname)
 		pathname_contents[length] = '\0'; // string needs to be null terminated
 	}
 	fclose(pathname_file);
-	fprintf(stderr, "[%s:%d] %s has length %ld\n", __FILE__, __LINE__, pathname, length);
 
 
 	/**
@@ -700,15 +690,12 @@ writeFile(const char* pathname, const char* dirname)
 }
 
 
-int // IT IS YET TO BE REDONE.
+int
 appendToFile(const char* pathname, void* buf, size_t size, const char* dirname)
 {
 	int err;
 	char error_string[REQUESTLEN];
-	int len;
-	GET_MESSAGE_SIZE(len, pathname, buf, size, dirname);
-	if (!pathname || strlen(pathname) > MAXPATH ||
-				len >= REQUESTLEN)
+	if (!pathname)
 	{
 		err = EINVAL;
 		goto failure;
@@ -729,14 +716,160 @@ appendToFile(const char* pathname, void* buf, size_t size, const char* dirname)
 
 	char buffer[REQUESTLEN];
 	memset(buffer, 0, REQUESTLEN);
-	if (dirname) 
-		snprintf(buffer, REQUESTLEN, "%d %s %s %lu %s", APPEND, pathname, (char*) buf, size, dirname);
-	else
-		snprintf(buffer, REQUESTLEN, "%d %s %s %lu", APPEND, pathname, (char*) buf, size);
+	snprintf(buffer, REQUESTLEN, "%d %s %lu", APPEND, pathname, size);
 
-	//HANDLER;
+	// it is necessary to send the whole buffer at this point
+	if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// send file contents
+	if (size != 0)
+	{
+		if (writen((long) fd_socket, (void*) buf, size) == -1)
+		{
+			err = errno;
+			goto failure;
+		}
+	}
+	// read actual output
+	char answer_str[OPVALUE_LEN];
+	memset(answer_str, 0, OPVALUE_LEN);
+	if (readn((long) fd_socket, (void*) answer_str, OPVALUE_LEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// check whether output is legal
+	int answer;
+	if (sscanf(answer_str, "%d", &answer) != 1)
+	{
+		err = EBADMSG;
+		goto failure;
+	}
+	char errno_str[ERRNOLEN];
+	bool _failure = false, _fatal = false;
+	// handle output
+	switch (answer)
+	{
+		case OP_SUCCESS:
+			break;
 
+		case OP_FAILURE:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			_failure = true;
+			break;
+
+		case OP_FATAL:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			_fatal = true;
+			break;
+	}
 	// handle evicted files
+	// get number of victims
+	char msg_size[SIZELEN];
+	memset(msg_size, 0, SIZELEN);
+	if (readn((long) fd_socket, (void*) msg_size, SIZELEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	size_t evicted_no = 0;
+	if (sscanf(msg_size, "%lu", &evicted_no) != 1)
+	{
+		err = EBADMSG;
+		goto failure;
+	}
+	if (evicted_no !=  0) // there have been victims
+	{
+		while (1)
+		{
+			if (evicted_no == 0) break;
+			// get filename
+			memset(buffer, 0, REQUESTLEN);
+			if (readn((long) fd_socket, buffer, REQUESTLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			// get content length
+			memset(msg_size, 0, SIZELEN);
+			if (readn((long) fd_socket, msg_size, SIZELEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			size_t content_size;
+			if (sscanf(msg_size, "%lu", &content_size) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			char* contents = NULL;
+			if (content_size != 0)
+			{
+				contents = (char*) malloc(content_size + 1);
+				if (!contents)
+				{
+					err = errno;
+					goto fatal;
+				}
+				memset(contents, 0, content_size + 1);
+				if (readn((long) fd_socket, (void*) contents, content_size) == -1)
+				{
+					err = errno;
+					goto failure;
+				}
+			}
+			// files are to be stored if and only if dirname has been specified
+			if (dirname)
+			{
+				// prepend dirname to filename
+				size_t dir_len = strlen(dirname);
+				if (dir_len + strlen(buffer) > PATH_MAX)
+				{
+					err = ENAMETOOLONG;
+					goto failure;
+				}
+				memmove(buffer + dir_len, buffer, strlen(buffer) + 1);
+				memcpy(buffer, dirname, dir_len);
+				// save file
+				if (savefile(buffer, contents) == -1)
+				{
+					err = errno;
+					goto failure;
+				}
+			}
+			free(contents); contents = NULL;
+			evicted_no--;
+		}
+	}
+
+	if (_failure) goto failure;
+	if (_fatal) goto fatal;
+
+
 
 	PRINT_IF(print_enabled, "appendToFile %s %s : SUCCESS.\n", pathname, dirname);
 	return 0;

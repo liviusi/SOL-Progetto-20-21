@@ -286,7 +286,7 @@ worker_routine(void* arg)
 	int fd_ready; // currently being served client
 	opcodes_t request_type; // type of request to be handled
 	char* tmp_request; // copy of request as a string
-	char pathname[MAXPATH]; // used to denote pathname for operations on storage
+	char pathname[REQUESTLEN]; // used to denote pathname for operations on storage
 	linked_list_t* evicted = NULL; // used to store evicted files
 	void* read_buf = NULL; // buffer used for reading operation
 	size_t read_size = 0; // size of read_buf
@@ -327,7 +327,7 @@ worker_routine(void* arg)
 		{
 			case OPEN:
 				// get pathname
-				memset(pathname, 0, MAXPATH);
+				memset(pathname, 0, REQUESTLEN);
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				// get flags
@@ -368,7 +368,7 @@ worker_routine(void* arg)
 
 			case CLOSE:
 				// get pathname
-				memset(pathname, 0, MAXPATH);
+				memset(pathname, 0, REQUESTLEN);
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_closeFile(storage, pathname, fd_ready);
@@ -405,7 +405,7 @@ worker_routine(void* arg)
 				read_buf = NULL;
 				read_size = 0;
 				// get pathname
-				memset(pathname, 0, MAXPATH);
+				memset(pathname, 0, REQUESTLEN);
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				// check whether file to be read's
@@ -491,7 +491,7 @@ worker_routine(void* arg)
 				evicted_file_content = NULL;
 				write_contents = NULL;
 				// get pathname
-				memset(pathname, 0, MAXPATH);
+				memset(pathname, 0, REQUESTLEN);
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				// get content size
@@ -562,31 +562,79 @@ worker_routine(void* arg)
 				REQUEST_DONE;
 				break;
 
-			case APPEND: // IT IS YET TO BE REDONE
+			case APPEND:
 				evicted = NULL;
 				append_buf = NULL;
 				append_size = 0;
 				// get pathname
-				memset(pathname, 0, MAXPATH);
+				memset(pathname, 0, REQUESTLEN);
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
-				// get buffer to append
-				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
-				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", (char*) append_buf), sscanf);
-				// get size of buffer
+				// get buffer size
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%lu", &append_size), sscanf);
-				// check whether dirname has been specified
-				token = strtok_r(NULL, " ", &saveptr);
-				if (!token)
-					err = Storage_appendToFile(storage, pathname, append_buf,
-								append_size, NULL, fd_ready);
-				else
-					err = Storage_appendToFile(storage, pathname, append_buf,
-								append_size, &evicted, fd_ready);
-				// handle answer
-				//HANDLE_ANSWER;
-				// send evicted files
+				// allocate memory for the buffer
+				if (append_size != 0)
+				{
+					EXIT_IF_EQ(append_buf, NULL, malloc(append_size + 1), malloc);
+					memset(append_buf, 0, append_size + 1);
+					EXIT_IF_EQ(err, -1, readn((long) fd_ready, append_buf, append_size), readn);
+				}
+				err = Storage_appendToFile(storage, pathname, append_buf, append_size, NULL, fd_ready);
+				errnocopy = errno;
+				free(append_buf);
+				// send return value
+				memset(request, 0, REQUESTLEN);
+				snprintf(request, REQUESTLEN, "%d", err);
+				fprintf(stderr, "[%s:%d] appendToFile %s : %d\n", __FILE__, __LINE__, pathname, err);
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
+							strlen(request) + 1), writen);
+				switch (err)
+				{
+					case OP_SUCCESS:
+						break;
+
+					case OP_FAILURE:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						break;
+
+					case OP_FATAL:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						break;
+				}
+				// send number of victims
+				memset(msg_size, 0, SIZELEN);
+				snprintf(msg_size, SIZELEN, "%lu", LinkedList_GetNumberOfElements(evicted));
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) msg_size, SIZELEN), writen);
+				// send victims if any
+				while (LinkedList_GetNumberOfElements(evicted) != 0)
+				{
+					errno = 0;
+					evicted_file_size = LinkedList_PopFront(evicted, &evicted_file_name,
+								(void**) &evicted_file_content);
+					if (evicted_file_size == 0 && errno == ENOMEM) exit(1);
+					memset(request, 0, REQUESTLEN);
+					snprintf(request, REQUESTLEN, "%s", evicted_file_name); // should error handle this
+					// send victim's name
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, REQUESTLEN), writen);
+					// send victim's contents size
+					memset(msg_size, 0, SIZELEN);
+					snprintf(msg_size, SIZELEN, "%lu", evicted_file_size);
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) msg_size, SIZELEN), writen);
+					// send actual contents
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*)
+								evicted_file_content, evicted_file_size), writen);
+					free(evicted_file_name); evicted_file_name = NULL;
+					free(evicted_file_content); evicted_file_content = NULL;
+				}
+				LinkedList_Free(evicted); evicted = NULL;
+				if (err == OP_FATAL) exit(1);
 				REQUEST_DONE;
 				break;
 
@@ -596,7 +644,7 @@ worker_routine(void* arg)
 
 			case LOCK:
 				// get pathname
-				memset(pathname, 0, MAXPATH);
+				memset(pathname, 0, REQUESTLEN);
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_lockFile(storage, pathname, fd_ready);
@@ -631,7 +679,7 @@ worker_routine(void* arg)
 
 			case UNLOCK:
 				// get pathname
-				memset(pathname, 0, MAXPATH);
+				memset(pathname, 0, REQUESTLEN);
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_unlockFile(storage, pathname, fd_ready);
@@ -665,7 +713,7 @@ worker_routine(void* arg)
 
 			case REMOVE:
 				// get pathname
-				memset(pathname, 0, MAXPATH);
+				memset(pathname, 0, REQUESTLEN);
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_removeFile(storage, pathname, fd_ready);
