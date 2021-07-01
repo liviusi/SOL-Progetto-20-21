@@ -6,6 +6,7 @@
 #define _DEFAULT_SOURCE // usleep
 
 #include <dirent.h>
+#include <linux/limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +17,7 @@
 #include <linked_list.h>
 #include <server_defines.h>
 #include <server_interface.h>
+#include <utilities.h>
 #include <wrappers.h>
 
 #define COMMANDLEN 2
@@ -105,11 +107,13 @@ main(int argc, char* argv[])
 	char flag; int msec = 1000;
 	int msec_sleeping = 0; // milliseconds client shall sleep between requests
 	char* tmp; char* token; char* saveptr;
-	char* dirname; linked_list_t* R_files = NULL; char* filename = NULL;
+	linked_list_t* R_files = NULL; char* filename = NULL;
 	int open_flags = 0;
 	struct timespec abstime = { .tv_nsec = 0, .tv_sec = time(0) + 10 };
 	char* read_contents = NULL; size_t read_size = 0;
 	char* cwd_copy = NULL;
+	int upto = 0;
+	char filepath[PATH_MAX];
 	// parse argv into commands to be executed
 	for (int i = 1; i < argc; i++)
 	{
@@ -169,13 +173,14 @@ main(int argc, char* argv[])
 				// write directory
 				// get dirname from arguments
 				tmp = arguments[i];
+				R_files = LinkedList_Init(NULL);
+				if (!R_files) goto cleanup;
+				cwd_copy = cwd();
+				if (!cwd_copy) goto cleanup;
+				
 				// check whether a limit of files to be sent has been specified
 				if (strrchr(tmp, ',') == NULL) // no limit
 				{
-					fprintf(stderr, "NO LIMITS.\n");
-					R_files = LinkedList_Init(NULL);
-					if (!R_files) goto cleanup;
-					cwd_copy = cwd();
 					if (list_files(arguments[i], R_files) == -1)
 					{
 						if (errno == ENOMEM) goto cleanup;
@@ -185,7 +190,9 @@ main(int argc, char* argv[])
 					free(cwd_copy); cwd_copy = NULL;
 					while (LinkedList_GetNumberOfElements(R_files) != 0)
 					{
-						if (LinkedList_PopFront(R_files, &filename, NULL) == -1) goto cleanup;
+						errno = 0;
+						if (LinkedList_PopFront(R_files, &filename, NULL) == 0 && errno == ENOMEM)
+							goto cleanup;
 						fprintf(stderr, "filename : %s\n", filename);
 						SET_FLAG(open_flags, O_CREATE);
 						SET_FLAG(open_flags, O_LOCK);
@@ -209,9 +216,41 @@ main(int argc, char* argv[])
 				}
 				else
 				{
-					dirname = strtok_r(tmp, ",", &saveptr);
+					token = strtok_r(tmp, ",", &saveptr);
+					if (list_files(token, R_files) == -1)
+					{
+						if (errno == ENOMEM) goto cleanup;
+						else break;
+					}
+					if (chdir(cwd_copy) == -1) goto cleanup;
+					free(cwd_copy); cwd_copy = NULL;
 					token = strtok_r(NULL, ",", &saveptr);
-					fprintf(stderr, "dirname = %s\nLIMIT = %s\n", dirname, token);
+					if (sscanf(token, "%d", &upto) != 1) goto cleanup;
+					while (upto > 0)
+					{
+						if (LinkedList_GetNumberOfElements(R_files) == 0) break;
+						if (LinkedList_PopFront(R_files, &filename, NULL) == 0 && errno == ENOMEM)
+							goto cleanup;
+						fprintf(stderr, "filename : %s\n", filename);
+						SET_FLAG(open_flags, O_CREATE);
+						SET_FLAG(open_flags, O_LOCK);
+						openFile(filename, open_flags);
+						RESET_MASK(open_flags);
+						if (i + 2 < argc -1)
+						{
+							if (commands[i+2][0] == 'D')
+								writeFile(filename, arguments[i+2]);
+						}
+						else
+							writeFile(filename, NULL);
+						unlockFile(filename);
+						closeFile(filename);
+						usleep(1000 * msec_sleeping);
+						free(filename); filename = NULL;
+						upto--;
+					}
+					LinkedList_Free(R_files); R_files = NULL;
+					break;
 				}
 				break;
 
@@ -269,8 +308,13 @@ main(int argc, char* argv[])
 					openFile(tmp, open_flags);
 					readFile(tmp, (void** )&read_contents, &read_size);
 					closeFile(tmp);
-					if (read_contents)
-						fprintf(stdout, "SIZE: %lu\tCONTENTS:\n%s", read_size, read_contents);
+					if (i + 2 < argc - 1 && commands[i+2][0] == 'd')
+					{
+						// prepend dirname to filename
+						memset(filepath, 0, PATH_MAX);
+						snprintf(filepath, PATH_MAX, "%s/%s", arguments[i+2], tmp); // TODO: ERROR HANDLING
+						savefile(filepath, read_contents); // TODO: ERROR HANDLING
+					}
 					free(read_contents); read_contents = NULL;
 					usleep(1000 * msec_sleeping);
 					break;
@@ -285,8 +329,13 @@ main(int argc, char* argv[])
 						openFile(token, open_flags);
 						readFile(token, (void**) &read_contents, &read_size);
 						closeFile(token);
-						if (read_contents)
-							fprintf(stdout, "SIZE: %lu\tCONTENTS:\n%s", read_size, read_contents);
+						if (i + 2 < argc - 1 && commands[i+2][0] == 'd')
+						{
+							// prepend dirname to filename
+							memset(filepath, 0, PATH_MAX);
+							snprintf(filepath, PATH_MAX, "%s/%s", token, arguments[i+2]); // TODO: ERROR HANDLING
+							savefile(filepath, read_contents); // TODO: ERROR HANDLING
+						}
 						free(read_contents); read_contents = NULL;
 						usleep(1000 * msec_sleeping);
 						token = strtok_r(NULL, ",", &saveptr);
@@ -308,6 +357,7 @@ main(int argc, char* argv[])
 				{
 					openFile(tmp, open_flags);
 					lockFile(tmp);
+					closeFile(tmp);
 					usleep(1000 * msec_sleeping);
 				}
 				else // multiple files
@@ -333,6 +383,7 @@ main(int argc, char* argv[])
 				{
 					openFile(tmp, open_flags);
 					unlockFile(tmp);
+					closeFile(tmp);
 					usleep(1000 * msec_sleeping);
 				}
 				else // multiple files
@@ -349,7 +400,30 @@ main(int argc, char* argv[])
 					}
 				}
 				break;
-
+			case 'c':
+				tmp = arguments[i];
+				RESET_MASK(open_flags);
+				// check whether multiple files have been specified
+				if (strchr(tmp, ',') == NULL) // single file
+				{
+					openFile(tmp, open_flags);
+					removeFile(tmp);
+					usleep(1000 * msec_sleeping);
+				}
+				else // multiple files
+				{
+					token = strtok_r(tmp, ",", &saveptr);
+					while (1)
+					{
+						if (!token) break;
+						openFile(token, open_flags);
+						removeFile(token);
+						closeFile(token);
+						token = strtok_r(NULL, ",", &saveptr);
+						usleep(1000 * msec_sleeping);
+					}
+				}
+				break;
 
 			default:
 				break;
@@ -362,8 +436,6 @@ main(int argc, char* argv[])
 	cleanup:
 		for (int i = 0; i < argc - 1; i++)
 		{
-			fprintf(stdout, "commands[%d] : %s", i, commands[i]);
-			fprintf(stdout, "\targuments[%d] : %s\n", i, arguments[i]);
 			free(commands[i]);
 			free(arguments[i]);
 		}

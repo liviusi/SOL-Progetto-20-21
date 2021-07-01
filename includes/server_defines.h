@@ -18,10 +18,11 @@
 #define OP_FAILURE 1
 #define OP_FATAL 2
 
+#define ERRNOLEN 4
 #define MAXPATH 108
 #define MAXFILESIZE 1000000 // 1 MB
-#define MSG_SIZELEN 32
-
+#define SIZELEN 32
+#define REQUESTLEN 2048
 
 typedef enum opcodes
 {

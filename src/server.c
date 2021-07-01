@@ -22,7 +22,6 @@
 #define MAXCONNECTIONS 10
 #define PIPEBUFFERLEN 10
 #define TASKLEN 32
-#define REQUESTLEN 2048
 #define MAXTASKS 4096
 
 #define TERMINATE_WORKER 0 // used to send a termination message
@@ -296,8 +295,9 @@ worker_routine(void* arg)
 	int flags = 0; // used to denote flags for operations on storage
 	char* evicted_file_name = NULL; // name of evicted file
 	char* evicted_file_content = NULL; // content of evicted file
+	size_t evicted_file_size = 0; // size of evicted file content
 	char pipe_buffer[PIPEBUFFERLEN]; // buffer to be written on pipe
-	char msg_size[TASKLEN];
+	char msg_size[SIZELEN];
 	while(1)
 	{
 		// reset task string
@@ -305,7 +305,6 @@ worker_routine(void* arg)
 		// read ready fd from tasks' queue
 		EXIT_IF_NEQ(err, 0, BoundedBuffer_Dequeue(tasks, &fd_ready_string),
 					BoundedBuffer_Dequeue);
-		fprintf(stdout, "ready fd: %s\n", fd_ready_string);
 		EXIT_IF_NEQ(err, 1, sscanf(fd_ready_string, "%d", &fd_ready), sscanf);
 		if (fd_ready == TERMINATE_WORKER) // termination message
 		{
@@ -321,7 +320,6 @@ worker_routine(void* arg)
 		token = strtok_r(tmp_request, " ", &saveptr);
 		if (!token) NEXT_ITERATION;
 		EXIT_IF_NEQ(err, 1, sscanf(token, "%d", (int*) &request_type), sscanf);
-		fprintf(stdout, "request type = %d\n", (int) request_type);
 		fflush(stdout);
 		switch (request_type)
 		{
@@ -336,7 +334,33 @@ worker_routine(void* arg)
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%d", &flags), sscanf);
 				//fprintf(stderr, "pathname : %s\nflags : %d\nfd_ready : %d\n", pathname, flags, fd_ready);
 				err = Storage_openFile(storage, pathname, flags, fd_ready);
-				//HANDLE_ANSWER;
+				errnocopy = errno;
+				// send return value
+				memset(request, 0, REQUESTLEN);
+				snprintf(request, REQUESTLEN, "%d", err);
+				fprintf(stderr, "[%s:%d] openFile %s %d : %d\n", __FILE__, __LINE__, pathname, flags, err);
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
+							strlen(request) + 1), writen);
+				switch (err)
+				{
+					case OP_SUCCESS:
+						break;
+
+					case OP_FAILURE:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						break;
+
+					case OP_FATAL:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						exit(1);
+				}
+				flags = 0;
 				REQUEST_DONE;
 				break;
 
@@ -346,7 +370,32 @@ worker_routine(void* arg)
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_closeFile(storage, pathname, fd_ready);
-				//HANDLE_ANSWER;
+				errnocopy = errno;
+				// send return value
+				memset(request, 0, REQUESTLEN);
+				snprintf(request, REQUESTLEN, "%d", err);
+				fprintf(stderr, "[%s:%d] closeFile %s : %d\n", __FILE__, __LINE__, pathname, err);
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
+							strlen(request) + 1), writen);
+				switch (err)
+				{
+					case OP_SUCCESS:
+						break;
+
+					case OP_FAILURE:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						break;
+
+					case OP_FATAL:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						exit(1);
+				}
 				REQUEST_DONE;
 				break;
 
@@ -365,20 +414,72 @@ worker_routine(void* arg)
 				if (flags == 1)
 				{
 					err = Storage_readFile(storage, pathname, &read_buf, &read_size, fd_ready);
-					//HANDLE_ANSWER;
+					errnocopy = errno;
+					// send return value
 					memset(request, 0, REQUESTLEN);
-					snprintf(request, REQUESTLEN, "%lu", read_size);
-					EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+					snprintf(request, REQUESTLEN, "%d", err);
+					fprintf(stderr, "[%s:%d] readFile %s : %d\n", __FILE__, __LINE__, pathname, err);
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
 								strlen(request) + 1), writen);
-					EXIT_IF_EQ(err, -1, writen((long) fd_ready, read_buf, read_size), writen);
+					switch (err)
+					{
+						case OP_SUCCESS:
+							break;
+
+						case OP_FAILURE:
+							memset(request, 0, REQUESTLEN);
+							snprintf(request, REQUESTLEN, "%d", errnocopy);
+							EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+										ERRNOLEN), writen);
+							break;
+
+						case OP_FATAL:
+							memset(request, 0, REQUESTLEN);
+							snprintf(request, REQUESTLEN, "%d", errnocopy);
+							EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+										ERRNOLEN), writen);
+							exit(1);
+					}
+					// send size
+					memset(msg_size, 0, SIZELEN);
+					snprintf(msg_size, SIZELEN, "%lu", read_size);
+					EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) msg_size,
+								SIZELEN), writen);
+					if (read_size != 0)
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, read_buf, read_size), writen);
 					free(read_buf); read_buf = NULL;
 				}
 				else
 				{
 					err = Storage_readFile(storage, pathname, NULL, NULL, fd_ready);
-					//HANDLE_ANSWER;
+					errnocopy = errno;
+					// send return value
+					memset(request, 0, REQUESTLEN);
+					snprintf(request, REQUESTLEN, "%d", err);
+					fprintf(stderr, "[%s:%d] readFile %s NULL: %d\n", __FILE__, __LINE__, pathname, err);
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
+								strlen(request) + 1), writen);
+					switch (err)
+					{
+						case OP_SUCCESS:
+							break;
+
+						case OP_FAILURE:
+							memset(request, 0, REQUESTLEN);
+							snprintf(request, REQUESTLEN, "%d", errnocopy);
+							EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+										ERRNOLEN), writen);
+							break;
+
+						case OP_FATAL:
+							memset(request, 0, REQUESTLEN);
+							snprintf(request, REQUESTLEN, "%d", errnocopy);
+							EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+										ERRNOLEN), writen);
+							exit(1);
+					}
 				}
-				// should somehow send read file
+				flags = 0;
 				REQUEST_DONE;
 				break;
 
@@ -391,13 +492,63 @@ worker_routine(void* arg)
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_writeFile(storage, pathname, &evicted, fd_ready);
-				//HANDLE_ANSWER;
+				errnocopy = errno;
+				// send return value
+				memset(request, 0, REQUESTLEN);
+				snprintf(request, REQUESTLEN, "%d", err);
+				fprintf(stderr, "[%s:%d] writeFile %s : %d\n", __FILE__, __LINE__, pathname, err);
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
+							strlen(request) + 1), writen);
+				switch (err)
+				{
+					case OP_SUCCESS:
+						break;
+
+					case OP_FAILURE:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						break;
+
+					case OP_FATAL:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						break;
+				}
 				// send number of victims
+				memset(msg_size, 0, SIZELEN);
+				snprintf(msg_size, SIZELEN, "%lu", LinkedList_GetNumberOfElements(evicted));
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) msg_size, SIZELEN), writen);
+				// send victims if any
+				while (LinkedList_GetNumberOfElements(evicted) != 0)
+				{
+					errno = 0;
+					evicted_file_size = LinkedList_PopFront(evicted, &evicted_file_name,
+								(void**) &evicted_file_content);
+					if (evicted_file_size == 0 && errno == ENOMEM) exit(1);
+					memset(request, 0, REQUESTLEN);
+					snprintf(request, REQUESTLEN, "%s", evicted_file_name); // should error handle this
+					// send victim's name
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, REQUESTLEN), writen);
+					// send victim's contents size
+					memset(msg_size, 0, SIZELEN);
+					snprintf(msg_size, SIZELEN, "%lu", evicted_file_size);
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) msg_size, SIZELEN), writen);
+					// send actual contents
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*)
+								evicted_file_content, evicted_file_size), writen);
+					free(evicted_file_name); evicted_file_name = NULL;
+					free(evicted_file_content); evicted_file_content = NULL;
+				}
 				LinkedList_Free(evicted); evicted = NULL;
+				if (err == OP_FATAL) exit(1);
 				REQUEST_DONE;
 				break;
 
-			case APPEND:
+			case APPEND: // IT IS YET TO BE REDONE
 				evicted = NULL;
 				append_buf = NULL;
 				append_size = 0;
@@ -435,7 +586,32 @@ worker_routine(void* arg)
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_lockFile(storage, pathname, fd_ready);
-				//HANDLE_ANSWER;
+				errnocopy = errno;
+				// send return value
+				memset(request, 0, REQUESTLEN);
+				snprintf(request, REQUESTLEN, "%d", err);
+				fprintf(stderr, "[%s:%d] lockFile %s %d : %d\n", __FILE__, __LINE__, pathname, flags, err);
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
+							strlen(request) + 1), writen);
+				switch (err)
+				{
+					case OP_SUCCESS:
+						break;
+
+					case OP_FAILURE:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						break;
+
+					case OP_FATAL:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						exit(1);
+				}
 				REQUEST_DONE;
 				break;
 
@@ -445,8 +621,32 @@ worker_routine(void* arg)
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_unlockFile(storage, pathname, fd_ready);
-				//HANDLE_ANSWER;
-				REQUEST_DONE;
+				errnocopy = errno;
+				// send return value
+				memset(request, 0, REQUESTLEN);
+				snprintf(request, REQUESTLEN, "%d", err);
+				fprintf(stderr, "[%s:%d] unlockFile %s %d : %d\n", __FILE__, __LINE__, pathname, flags, err);
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
+							strlen(request) + 1), writen);
+				switch (err)
+				{
+					case OP_SUCCESS:
+						break;
+
+					case OP_FAILURE:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						break;
+
+					case OP_FATAL:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						exit(1);
+				}REQUEST_DONE;
 				break;
 
 			case REMOVE:
@@ -455,16 +655,37 @@ worker_routine(void* arg)
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
 				err = Storage_removeFile(storage, pathname, fd_ready);
-				//HANDLE_ANSWER;
+				errnocopy = errno;
+				// send return value
+				memset(request, 0, REQUESTLEN);
+				snprintf(request, REQUESTLEN, "%d", err);
+				fprintf(stderr, "[%s:%d] removeFile %s : %d\n", __FILE__, __LINE__, pathname, err);
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
+							strlen(request) + 1), writen);
+				switch (err)
+				{
+					case OP_SUCCESS:
+						break;
+
+					case OP_FAILURE:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						break;
+
+					case OP_FATAL:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						exit(1);
+				}
 				REQUEST_DONE;
 				break;
-			/**
-			case TERMINATE:
-				EXIT_IF_EQ(err, -1, close(fd_ready), close);
-				EXIT_IF_EQ(err, -1, writen(pipe_output_channel, CLIENT_LEFT,
-							PIPEBUFFERLEN), writen);
+
+			default:
 				break;
-			*/
 		}
 		free(fd_ready_string);
 	}

@@ -117,30 +117,28 @@ LinkedList_PushBack(linked_list_t* list, const char* key,
 	return 0;
 }
 
-int
+size_t
 LinkedList_PopFront(linked_list_t* list, char** keyptr, void** dataptr)
 {
 	if (!list || !(list->nelems)) // list is either empty or null
 	{
 		errno = EINVAL;
-		return -1;
+		return 0;
 	}
 	list->nelems--;
 	errno = 0;
 	if ((keyptr != NULL) && (Node_CopyKey(list->first, keyptr) != 0))
 	{
-		if (errno == ENOMEM) return -1;
+		if (errno == ENOMEM) return 0;
 		else *keyptr = NULL;
 	}
+	size_t res = 0;
 	errno = 0;
-	void* tmp;
-	if ((dataptr != NULL) && (Node_CopyData(list->first, &tmp) == 0))
+	if ((dataptr != NULL) && ((res = Node_CopyData(list->first, dataptr)) == 0))
 	{
-		fprintf(stderr, "[DEBUG %s:%d] DATA: %s\n", __FILE__, __LINE__, (char*) tmp);
-		if (errno == ENOMEM) return -1;
+		if (errno == ENOMEM) return 0;
 		else *dataptr = NULL;
 	}
-	if (dataptr) *dataptr = tmp;
 	if (list->nelems == 0)
 	{
 		Node_Free(list->first);
@@ -155,26 +153,29 @@ LinkedList_PopFront(linked_list_t* list, char** keyptr, void** dataptr)
 		list->first = tmp;
 	}
 	// list->first has now been freed.
-	return 0;
+	return res;
 }
 
-int
+size_t
 LinkedList_PopBack(linked_list_t* list, char** keyptr, void** dataptr)
 {
 	if (!list || !(list->nelems)) // list is either empty or null
 	{
 		errno = EINVAL;
-		return -1;
+		return 0;
 	}
 	list->nelems--;
+	errno = 0;
 	if ((keyptr != NULL) && (Node_CopyKey(list->last, keyptr) != 0))
 	{
-		if (errno == ENOMEM) return -1;
+		if (errno == ENOMEM) return 0;
 		else *keyptr = NULL;
 	}
-	if ((dataptr != NULL) && (Node_CopyData(list->last, dataptr) == 0))
+	errno = 0;
+	size_t res = 0;
+	if ((dataptr != NULL) && ((res = Node_CopyData(list->last, dataptr)) == 0))
 	{
-		if (errno == ENOMEM) return -1;
+		if (errno == ENOMEM) return 0;
 		else *dataptr = NULL;
 	}
 	if (list->nelems == 0)
@@ -190,7 +191,7 @@ LinkedList_PopBack(linked_list_t* list, char** keyptr, void** dataptr)
 		Node_Free(list->last);
 		list->last = tmp;
 	}
-	return 0;
+	return res;
 }
 
 int

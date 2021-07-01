@@ -107,8 +107,8 @@ BoundedBuffer_Dequeue(bounded_buffer_t* buffer, char** dataptr)
 	if (err != 0) return -1;
 	while (LinkedList_GetNumberOfElements(buffer->elems) == 0)
 		pthread_cond_wait(&(buffer->empty), &(buffer->mutex));
-	err = LinkedList_PopFront(buffer->elems, &tmp, NULL);
-	if (err != 0) return -1;
+	errno = 0;
+	if (LinkedList_PopFront(buffer->elems, &tmp, NULL) == 0 && errno == ENOMEM) return -1;
 	if (LinkedList_GetNumberOfElements(buffer->elems) == (buffer->capacity - 1))
 		pthread_cond_broadcast(&(buffer->full));
 	err = pthread_mutex_unlock(&(buffer->mutex));

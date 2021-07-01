@@ -95,7 +95,7 @@ LinkedList_PushBack(linked_list_t* list, const char* key,
  * errors specified for the routines "Node_CopyKey",
  * "Node_CopyData".
 */
-int
+size_t
 LinkedList_PopFront(linked_list_t* list, char** keyptr, void** dataptr);
 
 /**
@@ -110,7 +110,7 @@ LinkedList_PopFront(linked_list_t* list, char** keyptr, void** dataptr);
  * errors specified for the routines "Node_CopyKey",
  * "Node_CopyData".
 */
-int
+size_t
 LinkedList_PopBack(linked_list_t* list, char** keyptr, void** dataptr);
 
 /**

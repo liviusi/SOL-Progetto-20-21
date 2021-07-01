@@ -118,16 +118,30 @@ savefile(const char* path, const char* contents)
 {
 	int len = strlen(path);
 	char* tmp_path = (char*) malloc(sizeof(char) * (len + 1));
+	if (!tmp_path) return -1;
 	memset(tmp_path, 0, len + 1);
 	strcpy(tmp_path, path);
 	char* tmp = strrchr(tmp_path, '/');
 	if (tmp) *tmp = '\0';
-	if (mkdir_p(tmp_path) != 0) return -1;
+	if (mkdir_p(tmp_path) != 0)
+	{
+		fprintf(stderr, "[%s:%d] %s : reached this.\n", __FILE__, __LINE__, path);
+		free(tmp_path);
+		return -1;
+	}
 	mode_t mask = umask(033);
 	FILE* file = fopen(path, "w+");
-	if (!file) return -1;
+	if (!file)
+	{
+		fprintf(stderr, "[%s:%d] %s : reached this.\n", __FILE__, __LINE__, path);
+		free(tmp_path);
+		return -1;
+	}
 	umask(mask);
-	if (fputs(contents, file) == EOF) return -1;
+	if (contents)
+	{
+		if (fputs(contents, file) == EOF) return -1;
+	}
 	fclose(file);
 	free(tmp_path);
 	return 0;

@@ -1,7 +1,6 @@
 /**
  * @brief Source file for server_interface header.
  * @author Giacomo Trapani.
- * IT IS TO BE REDONE.
 */
 
 #define _DEFAULT_SOURCE
@@ -25,9 +24,8 @@
 #include <utilities.h>
 #include <wrappers.h>
 
-#define BUFFERLEN 2048
-#define ANSWERLEN 2
-#define CHUNK 100
+#define ERRORSTRINGLEN 128
+#define OPVALUE_LEN 2
 
 #define GET_MESSAGE_SIZE(dest, pathname, buffer, buffer_size, dirname) \
 	dest = 0; \
@@ -38,7 +36,7 @@
 	if (dirname) dest += strlen(dirname);
 
 
-static int socket_fd = -1;
+static int fd_socket = -1;
 static char socketpath[MAXPATH];
 bool print_enabled = true;
 bool exit_on_fatal_errors = true;
@@ -47,8 +45,8 @@ int
 openConnection(const char* sockname, int msec, const struct timespec abstime)
 {
 	int err;
-	char error_string[BUFFERLEN];
-	if (socket_fd != -1)
+	char error_string[REQUESTLEN];
+	if (fd_socket != -1)
 	{
 		err = EISCONN;
 		goto failure;
@@ -59,8 +57,8 @@ openConnection(const char* sockname, int msec, const struct timespec abstime)
 		goto failure;
 	}
 
-	socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (socket_fd == -1)
+	fd_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (fd_socket == -1)
 	{
 		err = errno;
 		goto failure;
@@ -71,13 +69,13 @@ openConnection(const char* sockname, int msec, const struct timespec abstime)
 	sock_addr.sun_family = AF_UNIX;
 
 	time_t now;
-	while(connect(socket_fd, (struct sockaddr*) &sock_addr, sizeof(sock_addr)) == -1)
+	while(connect(fd_socket, (struct sockaddr*) &sock_addr, sizeof(sock_addr)) == -1)
 	{
 		err = errno;
 		now = time(NULL);
 		if (now >= abstime.tv_sec)
 		{
-			socket_fd = -1;
+			fd_socket = -1;
 			err = EAGAIN;
 			goto failure;
 		}
@@ -90,7 +88,7 @@ openConnection(const char* sockname, int msec, const struct timespec abstime)
 	return 0;
 
 	failure:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "openConnection %s : FAILURE. errno = %s.\n", sockname,
 					error_string);
 		errno = err;
@@ -101,7 +99,7 @@ int
 closeConnection(const char* sockname)
 {
 	int err;
-	char error_string[BUFFERLEN];
+	char error_string[REQUESTLEN];
 	if (!sockname)
 	{
 		err = EINVAL;
@@ -114,20 +112,20 @@ closeConnection(const char* sockname)
 		goto failure;
 	}
 
-	if (close(socket_fd) == -1)
+	if (close(fd_socket) == -1)
 	{
 		err = errno;
-		socket_fd = -1;
+		fd_socket = -1;
 		goto failure;
 	}
 
-	socket_fd = -1;
+	fd_socket = -1;
 
 	PRINT_IF(print_enabled, "closeConnection %s : SUCCESS.\n", sockname);
 	return 0;
 
 	failure:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "closeConnection %s : FAILURE. errno = %s.\n", sockname,
 					error_string);
 		errno = err;
@@ -138,14 +136,14 @@ int
 openFile(const char* pathname, int flags)
 {
 	int err;
-	char error_string[BUFFERLEN];
+	char error_string[ERRORSTRINGLEN];
 	if (!pathname || strlen(pathname) > MAXPATH)
 	{
 		err = EINVAL;
 		goto failure;
 	}
 
-	if (socket_fd == -1)
+	if (fd_socket == -1)
 	{
 		err = ENOTCONN;
 		goto failure;
@@ -158,24 +156,79 @@ openFile(const char* pathname, int flags)
 	 * OPCODE(OPEN) PATHNAME FLAGS.
 	*/
 
-	char buffer[BUFFERLEN];
-	memset(buffer, 0, BUFFERLEN);
-	snprintf(buffer, BUFFERLEN, "%d %s %d", OPEN, pathname, flags);
+	char buffer[REQUESTLEN];
+	memset(buffer, 0, REQUESTLEN);
+	snprintf(buffer, REQUESTLEN, "%d %s %d", OPEN, pathname, flags);
 
-	//HANDLER;
+	// it is necessary to send the whole buffer at this point
+	if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// read actual output
+	char answer_str[OPVALUE_LEN];
+	memset(answer_str, 0, OPVALUE_LEN);
+	if (readn((long) fd_socket, (void*) answer_str, OPVALUE_LEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// check whether output is legal
+	int answer;
+	if (sscanf(answer_str, "%d", &answer) != 1)
+	{
+		err = EBADMSG;
+		goto failure;
+	}
+	char errno_str[ERRNOLEN];
+	// handle output
+	switch (answer)
+	{
+		case OP_SUCCESS:
+			break;
+
+		case OP_FAILURE:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			goto failure;
+
+		case OP_FATAL:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			goto fatal;
+	}
 
 	PRINT_IF(print_enabled, "openFile %s %d : SUCCESS.\n", pathname, flags);
 	return 0;
 
 	failure:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "openFile %s %d : FAILURE. errno = %s.\n", pathname, flags,
 					error_string);
 		errno = err;
 		return -1;
 
 	fatal:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "openFile %s %d : FATAL ERROR. errno = %s.\n", pathname,
 					flags, error_string);
 		errno = err;
@@ -187,14 +240,14 @@ int
 readFile(const char* pathname, void** buf, size_t* size)
 {
 	int err;
-	char error_string[BUFFERLEN];
+	char error_string[REQUESTLEN];
 	if (!pathname || strlen(pathname) > MAXPATH)
 	{
 		err = EINVAL;
 		goto failure;
 	}
 
-	if (socket_fd == -1)
+	if (fd_socket == -1)
 	{
 		err = ENOTCONN;
 		goto failure;
@@ -209,57 +262,126 @@ readFile(const char* pathname, void** buf, size_t* size)
 	 * OPCODE(READ) PATHNAME.
 	*/
 
-	char buffer[BUFFERLEN];
-	memset(buffer, 0, BUFFERLEN);
+	char buffer[REQUESTLEN];
+	memset(buffer, 0, REQUESTLEN);
 	if (buf && size)
-		snprintf(buffer, BUFFERLEN, "%d %s 1", READ, pathname);
+		snprintf(buffer, REQUESTLEN, "%d %s 1", READ, pathname);
 	else
-		snprintf(buffer, BUFFERLEN, "%d %s 0", READ, pathname);
+		snprintf(buffer, REQUESTLEN, "%d %s 0", READ, pathname);
 
-	//HANDLER;
-
-	void* read_buffer = NULL;
-	size_t read_size = 0;
-
-	memset(buffer, 0, BUFFERLEN);
-	if (readn((long) socket_fd, buffer, BUFFERLEN) == -1)
+	// it is necessary to send the whole buffer at this point
+	if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)
 	{
 		err = errno;
 		goto failure;
 	}
-	if (sscanf(buffer, "%lu", &read_size) != 1)
+	// read actual output
+	char answer_str[OPVALUE_LEN];
+	memset(answer_str, 0, OPVALUE_LEN);
+	if (readn((long) fd_socket, (void*) answer_str, OPVALUE_LEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// check whether output is legal
+	int answer;
+	if (sscanf(answer_str, "%d", &answer) != 1)
+	{
+		err = EBADMSG;
+		goto failure;
+	}
+	char errno_str[ERRNOLEN];
+	bool _failure = false, _fatal = false;
+	// handle output
+	switch (answer)
+	{
+		case OP_SUCCESS:
+			break;
+
+		case OP_FAILURE:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			_failure = true;
+			break;
+
+		case OP_FATAL:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			_fatal = true;
+			break;
+	}
+
+	char* read_buffer = NULL;
+	size_t read_size = 0;
+	// read size
+	char msg_size[SIZELEN];
+	memset(msg_size, 0, SIZELEN);
+	if (readn((long) fd_socket, (void*) msg_size, SIZELEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	if (sscanf(msg_size, "%lu", &read_size) != 1)
 	{
 		err = EBADMSG;
 		goto failure;
 	}
 	// ensure there is enough space for the buffer
 	// to be nul terminated
-	read_buffer = malloc(read_size + 1);
-	if (!read_buffer) // enomem
+	if (read_size !=  0)
 	{
-		err = errno;
-		goto fatal;
-	}
-	memset(read_buffer, 0, read_size + 1);
-	if (readn((long) socket_fd, read_buffer, read_size) == -1)
-	{
-		err = errno;
-		goto failure;
+		read_buffer = (char*) malloc(sizeof(char) * (read_size + 1));
+		if (!read_buffer) // enomem
+		{
+			err = errno;
+			goto fatal;
+		}
+		memset(read_buffer, 0, read_size + 1);
+		if (readn((long) fd_socket, (void*) read_buffer, read_size) == -1)
+		{
+			err = errno;
+			goto failure;
+		}
+		read_buffer[read_size] = '\0';
 	}
 	*size = read_size;
-	*buf = read_buffer;
+	// ensure buffer is null terminated
+	*buf = (void*) read_buffer;
+
+	if (_failure) goto failure;
+	if (_fatal) goto fatal;
+
+	PRINT_IF(print_enabled, "readFile %s : SUCCESS.\n", pathname);
 
 	return 0;
 
 	failure:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "readFile %s : FAILURE. errno = %s.\n", pathname,
 					error_string);
 		errno = err;
 		return -1;
 
 	fatal:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "readFile %s : FATAL ERROR. errno = %s.\n", pathname,
 					error_string);
 		errno = err;
@@ -271,14 +393,14 @@ int
 writeFile(const char* pathname, const char* dirname)
 {
 	int err;
-	char error_string[BUFFERLEN];
+	char error_string[REQUESTLEN];
 	if (!pathname || strlen(pathname) > MAXPATH)
 	{
 		err = EINVAL;
 		goto failure;
 	}
 
-	if (socket_fd == -1)
+	if (fd_socket == -1)
 	{
 		err = ENOTCONN;
 		goto failure;
@@ -291,33 +413,151 @@ writeFile(const char* pathname, const char* dirname)
 	 * OPCODE(WRITE) PATHNAME DIRNAME.
 	*/
 
-	char buffer[BUFFERLEN];
-	char msg_size[MSG_SIZELEN];
-	bool _failure = false;
-	bool _fatal = false;
-	memset(buffer, 0, BUFFERLEN);
-	snprintf(buffer, BUFFERLEN, "%d %s", WRITE, pathname);
+	char buffer[REQUESTLEN];
+	memset(buffer, 0, REQUESTLEN);
+	snprintf(buffer, REQUESTLEN, "%d %s", WRITE, pathname);
 
-	fprintf(stderr, "[%d] sending %s\n", __LINE__, buffer);
-	buffer[BUFFERLEN-1] = '\0';
-	if (writen((long) socket_fd, (void*) buffer, strlen(buffer) + 1) == -1)
+	// it is necessary to send the whole buffer at this point
+	if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)
 	{
 		err = errno;
 		goto failure;
 	}
-	memset(buffer, 0, BUFFERLEN);
+	// read actual output
+	char answer_str[OPVALUE_LEN];
+	memset(answer_str, 0, OPVALUE_LEN);
+	if (readn((long) fd_socket, (void*) answer_str, OPVALUE_LEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// check whether output is legal
 	int answer;
-	
+	if (sscanf(answer_str, "%d", &answer) != 1)
+	{
+		err = EBADMSG;
+		goto failure;
+	}
+	char errno_str[ERRNOLEN];
+	bool _failure = false, _fatal = false;
+	// handle output
+	switch (answer)
+	{
+		case OP_SUCCESS:
+			break;
+
+		case OP_FAILURE:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			_failure = true;
+			break;
+
+		case OP_FATAL:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			_fatal = true;
+			break;
+	}
 	// handle evicted files
-	// prepend dirname to name
-	//size_t dir_len = strlen(dirname);
-	//if (dir_len + strlen(name) > PATH_MAX)
-	//{
-	//	err = ENAMETOOLONG;
-	//	goto failure;
-	//}
-	//memmove(name + dir_len, name, strlen(name) + 1);
-	//memcpy(name, dirname, dir_len);
+	// get number of victims
+	char msg_size[SIZELEN];
+	memset(msg_size, 0, SIZELEN);
+	if (readn((long) fd_socket, (void*) msg_size, SIZELEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	size_t evicted_no = 0;
+	if (sscanf(msg_size, "%lu", &evicted_no) != 1)
+	{
+		err = EBADMSG;
+		goto failure;
+	}
+	if (evicted_no !=  0) // there have been victims
+	{
+		while (1)
+		{
+			if (evicted_no == 0) break;
+			// get filename
+			memset(buffer, 0, REQUESTLEN);
+			if (readn((long) fd_socket, buffer, REQUESTLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			// get content length
+			memset(msg_size, 0, SIZELEN);
+			if (readn((long) fd_socket, msg_size, SIZELEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			size_t content_size;
+			if (sscanf(msg_size, "%lu", &content_size) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			char* contents = NULL;
+			if (content_size != 0)
+			{
+				contents = (char*) malloc(content_size + 1);
+				if (!contents)
+				{
+					err = errno;
+					goto fatal;
+				}
+				memset(contents, 0, content_size + 1);
+				if (readn((long) fd_socket, (void*) contents, content_size) == -1)
+				{
+					err = errno;
+					goto failure;
+				}
+			}
+			// files are to be stored if and only if dirname has been specified
+			if (dirname)
+			{
+				// prepend dirname to filename
+				size_t dir_len = strlen(dirname);
+				if (dir_len + strlen(buffer) > PATH_MAX)
+				{
+					err = ENAMETOOLONG;
+					goto failure;
+				}
+				memmove(buffer + dir_len, buffer, strlen(buffer) + 1);
+				memcpy(buffer, dirname, dir_len);
+				// save file
+				if (savefile(buffer, contents) == -1)
+				{
+					err = errno;
+					goto failure;
+				}
+			}
+			free(contents); contents = NULL;
+			evicted_no--;
+		}
+	}
+
+	if (_failure) goto failure;
+	if (_fatal) goto fatal;
 
 	if (dirname)
 	{
@@ -330,7 +570,7 @@ writeFile(const char* pathname, const char* dirname)
 	return 0;
 
 	failure:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		if (dirname)
 		{
 			PRINT_IF(print_enabled, "writeFile %s %s : FAILURE. errno = %s.\n", pathname,
@@ -345,7 +585,7 @@ writeFile(const char* pathname, const char* dirname)
 		return -1;
 
 	fatal:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		if (dirname)
 		{
 			PRINT_IF(print_enabled, "writeFile %s %s : FATAL ERROR. errno = %s.\n", pathname,
@@ -361,21 +601,22 @@ writeFile(const char* pathname, const char* dirname)
 		else return -1;
 }
 
-int
+
+int // IT IS YET TO BE REDONE.
 appendToFile(const char* pathname, void* buf, size_t size, const char* dirname)
 {
 	int err;
-	char error_string[BUFFERLEN];
+	char error_string[REQUESTLEN];
 	int len;
 	GET_MESSAGE_SIZE(len, pathname, buf, size, dirname);
 	if (!pathname || strlen(pathname) > MAXPATH ||
-				len >= BUFFERLEN)
+				len >= REQUESTLEN)
 	{
 		err = EINVAL;
 		goto failure;
 	}
 
-	if (socket_fd == -1)
+	if (fd_socket == -1)
 	{
 		err = ENOTCONN;
 		goto failure;
@@ -388,12 +629,12 @@ appendToFile(const char* pathname, void* buf, size_t size, const char* dirname)
 	 * OPCODE(APPEND) PATHNAME BUFFER SIZE DIRNAME.
 	*/
 
-	char buffer[BUFFERLEN];
-	memset(buffer, 0, BUFFERLEN);
+	char buffer[REQUESTLEN];
+	memset(buffer, 0, REQUESTLEN);
 	if (dirname) 
-		snprintf(buffer, BUFFERLEN, "%d %s %s %lu %s", APPEND, pathname, (char*) buf, size, dirname);
+		snprintf(buffer, REQUESTLEN, "%d %s %s %lu %s", APPEND, pathname, (char*) buf, size, dirname);
 	else
-		snprintf(buffer, BUFFERLEN, "%d %s %s %lu", APPEND, pathname, (char*) buf, size);
+		snprintf(buffer, REQUESTLEN, "%d %s %s %lu", APPEND, pathname, (char*) buf, size);
 
 	//HANDLER;
 
@@ -403,14 +644,14 @@ appendToFile(const char* pathname, void* buf, size_t size, const char* dirname)
 	return 0;
 
 	failure:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "appendToFile %s %s : FAILURE. errno = %s.\n", pathname,
 					dirname, error_string);
 		errno = err;
 		return -1;
 
 	fatal:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "appendToFile %s %s : FATAL ERROR. errno = %s.\n", pathname,
 					dirname, error_string);
 		errno = err;
@@ -422,14 +663,14 @@ int
 lockFile(const char* pathname)
 {
 	int err;
-	char error_string[BUFFERLEN];
+	char error_string[REQUESTLEN];
 	if (!pathname || strlen(pathname) > MAXPATH)
 	{
 		err = EINVAL;
 		goto failure;
 	}
 
-	if (socket_fd == -1)
+	if (fd_socket == -1)
 	{
 		err = ENOTCONN;
 		goto failure;
@@ -442,24 +683,80 @@ lockFile(const char* pathname)
 	 * OPCODE(LOCK) PATHNAME.
 	*/
 
-	char buffer[BUFFERLEN];
-	memset(buffer, 0, BUFFERLEN);
-	snprintf(buffer, BUFFERLEN, "%d %s", LOCK, pathname);
+	char buffer[REQUESTLEN];
+	memset(buffer, 0, REQUESTLEN);
+	snprintf(buffer, REQUESTLEN, "%d %s", LOCK, pathname);
 
-	//HANDLER;
+	// it is necessary to send the whole buffer at this point
+	if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// read actual output
+	char answer_str[OPVALUE_LEN];
+	memset(answer_str, 0, OPVALUE_LEN);
+	if (readn((long) fd_socket, (void*) answer_str, OPVALUE_LEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// check whether output is legal
+	int answer;
+	if (sscanf(answer_str, "%d", &answer) != 1)
+	{
+		err = EBADMSG;
+		goto failure;
+	}
+	char errno_str[ERRNOLEN];
+	// handle output
+	switch (answer)
+	{
+		case OP_SUCCESS:
+			break;
+
+		case OP_FAILURE:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			goto failure;
+
+		case OP_FATAL:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			goto fatal;
+	}
+
 
 	PRINT_IF(print_enabled, "lockFile %s : SUCCESS.\n", pathname);
 	return 0;
 
 	failure:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "lockFile %s : FAILURE. errno = %s.\n", pathname,
 					error_string);
 		errno = err;
 		return -1;
 
 	fatal:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "lockFile %s : FATAL ERROR. errno = %s.\n", pathname,
 					error_string);
 		errno = err;
@@ -471,14 +768,14 @@ int
 unlockFile(const char* pathname)
 {
 	int err;
-	char error_string[BUFFERLEN];
+	char error_string[REQUESTLEN];
 	if (!pathname || strlen(pathname) > MAXPATH)
 	{
 		err = EINVAL;
 		goto failure;
 	}
 
-	if (socket_fd == -1)
+	if (fd_socket == -1)
 	{
 		err = ENOTCONN;
 		goto failure;
@@ -491,24 +788,80 @@ unlockFile(const char* pathname)
 	 * OPCODE(LOCK) PATHNAME.
 	*/
 
-	char buffer[BUFFERLEN];
-	memset(buffer, 0, BUFFERLEN);
-	snprintf(buffer, BUFFERLEN, "%d %s", UNLOCK, pathname);
+	char buffer[REQUESTLEN];
+	memset(buffer, 0, REQUESTLEN);
+	snprintf(buffer, REQUESTLEN, "%d %s", UNLOCK, pathname);
 
-	//HANDLER;
+	// it is necessary to send the whole buffer at this point
+	if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// read actual output
+	char answer_str[OPVALUE_LEN];
+	memset(answer_str, 0, OPVALUE_LEN);
+	if (readn((long) fd_socket, (void*) answer_str, OPVALUE_LEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// check whether output is legal
+	int answer;
+	if (sscanf(answer_str, "%d", &answer) != 1)
+	{
+		err = EBADMSG;
+		goto failure;
+	}
+	char errno_str[ERRNOLEN];
+	// handle output
+	switch (answer)
+	{
+		case OP_SUCCESS:
+			break;
+
+		case OP_FAILURE:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			goto failure;
+
+		case OP_FATAL:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			goto fatal;
+	}
+
 
 	PRINT_IF(print_enabled, "unlockFile %s : SUCCESS.\n", pathname);
 	return 0;
 
 	failure:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "unlockFile %s : FAILURE. errno = %s.\n", pathname,
 					error_string);
 		errno = err;
 		return -1;
 
 	fatal:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "unlockFile %s : FATAL ERROR. errno = %s.\n", pathname,
 					error_string);
 		errno = err;
@@ -520,14 +873,14 @@ int
 closeFile(const char* pathname)
 {
 	int err;
-	char error_string[BUFFERLEN];
+	char error_string[ERRORSTRINGLEN];
 	if (!pathname || strlen(pathname) > MAXPATH)
 	{
 		err = EINVAL;
 		goto failure;
 	}
 
-	if (socket_fd == -1)
+	if (fd_socket == -1)
 	{
 		err = ENOTCONN;
 		goto failure;
@@ -540,24 +893,79 @@ closeFile(const char* pathname)
 	 * OPCODE(CLOSE) PATHNAME.
 	*/
 
-	char buffer[BUFFERLEN];
-	memset(buffer, 0, BUFFERLEN);
-	snprintf(buffer, BUFFERLEN, "%d %s", CLOSE, pathname);
+	char buffer[REQUESTLEN];
+	memset(buffer, 0, REQUESTLEN);
+	snprintf(buffer, REQUESTLEN, "%d %s", CLOSE, pathname);
 
-	//HANDLER;
+	// it is necessary to send the whole buffer at this point
+	if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// read actual output
+	char answer_str[OPVALUE_LEN];
+	memset(answer_str, 0, OPVALUE_LEN);
+	if (readn((long) fd_socket, (void*) answer_str, OPVALUE_LEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// check whether output is legal
+	int answer;
+	if (sscanf(answer_str, "%d", &answer) != 1)
+	{
+		err = EBADMSG;
+		goto failure;
+	}
+	char errno_str[ERRNOLEN];
+	// handle output
+	switch (answer)
+	{
+		case OP_SUCCESS:
+			break;
+
+		case OP_FAILURE:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			goto failure;
+
+		case OP_FATAL:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			goto fatal;
+	}
 
 	PRINT_IF(print_enabled, "closeFile %s : SUCCESS.\n", pathname);
 	return 0;
 
 	failure:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "closeFile %s : FAILURE. errno = %s.\n", pathname,
 					error_string);
 		errno = err;
 		return -1;
 
 	fatal:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "closeFile %s : FATAL ERROR. errno = %s.\n", pathname,
 					error_string);
 		errno = err;
@@ -569,14 +977,14 @@ int
 removeFile(const char* pathname)
 {
 	int err;
-	char error_string[BUFFERLEN];
+	char error_string[REQUESTLEN];
 	if (!pathname || strlen(pathname) > MAXPATH)
 	{
 		err = EINVAL;
 		goto failure;
 	}
 
-	if (socket_fd == -1)
+	if (fd_socket == -1)
 	{
 		err = ENOTCONN;
 		goto failure;
@@ -589,23 +997,78 @@ removeFile(const char* pathname)
 	 * OPCODE(CLOSE) PATHNAME.
 	*/
 
-	char buffer[BUFFERLEN];
-	memset(buffer, 0, BUFFERLEN);
+	char buffer[REQUESTLEN];
+	memset(buffer, 0, REQUESTLEN);
 
-	//HANDLER;
+	// it is necessary to send the whole buffer at this point
+	if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	// read actual output
+	char answer_str[OPVALUE_LEN];
+	memset(answer_str, 0, OPVALUE_LEN);
+	if (readn((long) fd_socket, (void*) answer_str, OPVALUE_LEN) == -1) // !!deadlock here!!
+	{
+		err = errno;
+		goto failure;
+	}
+	// check whether output is legal
+	int answer;
+	if (sscanf(answer_str, "%d", &answer) != 1)
+	{
+		err = EBADMSG;
+		goto failure;
+	}
+	char errno_str[ERRNOLEN];
+	// handle output
+	switch (answer)
+	{
+		case OP_SUCCESS:
+			break;
+
+		case OP_FAILURE:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			goto failure;
+
+		case OP_FATAL:
+			// read errno value
+			if (readn((long) fd_socket, (void*) errno_str, ERRNOLEN) == -1)
+			{
+				err = errno;
+				goto failure;
+			}
+			if (sscanf(errno_str, "%d", &err) != 1)
+			{
+				err = EBADMSG;
+				goto failure;
+			}
+			goto fatal;
+	}
 
 	PRINT_IF(print_enabled, "removeFile %s : SUCCESS.\n", pathname);
 	return 0;
 
 	failure:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "removeFile %s : FAILURE. errno = %s.\n", pathname,
 					error_string);
 		errno = err;
 		return -1;
 
 	fatal:
-		strerror_r(err, error_string, BUFFERLEN);
+		strerror_r(err, error_string, REQUESTLEN);
 		PRINT_IF(print_enabled, "removeFile %s : FATAL ERROR. errno = %s.\n", pathname,
 					error_string);
 		errno = err;

@@ -241,7 +241,10 @@ Storage_getVictim(storage_t* storage, char** victim_name)
 		errno = EINVAL;
 		return -1;
 	}
-	return LinkedList_PopBack(storage->sorted_files, victim_name, NULL);
+	errno = 0;
+	size_t res = LinkedList_PopBack(storage->sorted_files, victim_name, NULL);
+	if (res == 0 && errno == ENOMEM) return -1;
+	return 0;
 }
 
 int
@@ -271,6 +274,12 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 	}
 	if (exists == 0) // file is not inside the storage
 	{
+		if (!(IS_O_CREATE_SET(flags)))
+		{
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+			errno = ENOENT;
+			return OP_FAILURE;
+		}
 		if (storage->files_no == storage->max_files_no)
 		{
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
@@ -511,7 +520,6 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 			return OP_FAILURE;
 		}
 		pathname_contents[length] = '\0'; // string needs to be null terminated
-		//fprintf(stderr, "[DEBUG %s:%d] SIZE: %lu\nCONTENTS:\n%s\n", __FILE__, __LINE__, length, pathname_contents);
 	}
 	fclose(pathname_file);
 
@@ -847,7 +855,6 @@ Storage_closeFile(storage_t* storage, const char* pathname, int client)
 	if (exists == 0) // file is not inside the storage
 	{
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
-
 		errno = EBADF;
 		return OP_FAILURE;
 	}
@@ -898,6 +905,8 @@ Storage_removeFile(storage_t* storage, const char* pathname, int client)
 	snprintf(str_client, BUFFERLEN, "%d", client);
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(storage->lock));
 	RETURN_FATAL_IF_EQ(exists, -1, HashTable_Find(storage->files, (void*) pathname));
+
+	fprintf(stderr, "[%s:%d] WL acquired over storage.\n", __FILE__, __LINE__);
 	if (exists == 1) // file is inside storage
 	{
 		RETURN_FATAL_IF_EQ(file, NULL, (stored_file_t*)
@@ -916,6 +925,7 @@ Storage_removeFile(storage_t* storage, const char* pathname, int client)
 			errno = EACCES;
 			return OP_FAILURE;
 		}
+		fprintf(stderr, "[%s:%d] File is about to be deleted.\n", __FILE__, __LINE__);
 		storage->storage_size -= file->contents_size;
 		storage->files_no--;
 		RETURN_FATAL_IF_EQ(err, -1, HashTable_DeleteNode(storage->files, (void*) pathname));
