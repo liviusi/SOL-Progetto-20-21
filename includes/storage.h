@@ -113,8 +113,8 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf,
  *   	- file is not inside the storage (sets "errno" to "EBADF").
 */
 int
-Storage_writeFile(storage_t* storage, const char* pathname,
-			linked_list_t** evicted, int client);
+Storage_writeFile(storage_t* storage, const char* pathname, size_t length,
+			 const char* contents, linked_list_t** evicted, int client);
 
 /**
  * @brief Handles append to file. May evict files from storage.

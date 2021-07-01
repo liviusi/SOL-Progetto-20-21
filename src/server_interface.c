@@ -389,6 +389,30 @@ readFile(const char* pathname, void** buf, size_t* size)
 		else return -1;
 }
 
+/**
+ * @brief Checks whether file is a regular file.
+ * @returns 1 if it is a regular file, 0 if it is not, -1 on failure.
+ * @param pathname cannot be NULL.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * The function may also fail and set "errno" for any of the errors
+ * specified for the routine "stat".
+*/
+static int
+is_regular_file(const char *pathname)
+{
+	if (!pathname)
+	{
+		errno = EINVAL;
+		return -1;
+	}
+	struct stat statbuf;
+	int err = stat(pathname, &statbuf);
+	if (err != 0) return -1;
+	if (S_ISREG(statbuf.st_mode))
+		return 1;
+	return 0;
+}
+
 int
 writeFile(const char* pathname, const char* dirname)
 {
@@ -406,6 +430,69 @@ writeFile(const char* pathname, const char* dirname)
 		goto failure;
 	}
 
+	long length = 0;
+	// calculating length
+	// must check whether pathname is a regular file
+	err = is_regular_file(pathname);
+	if (err == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+	if (err == 0)
+	{
+		err = EINVAL;
+		goto failure;
+	}
+
+	// opening file
+	FILE* pathname_file = fopen(pathname, "r");
+	char* pathname_contents = NULL;
+	if (!pathname_file)
+	{
+		err = errno;
+		goto failure;
+	}
+
+	// calculating file's content buffer length
+	err = fseek(pathname_file, 0, SEEK_END);
+	if (err != 0)
+	{
+		err = errno;
+		fclose(pathname_file);
+		goto failure;
+	}
+	length = ftell(pathname_file);
+	if (fseek(pathname_file, 0, SEEK_SET) != 0)
+	{
+		err = errno;
+		fclose(pathname_file);
+		goto failure;
+	}
+	// read file contents
+	if (length != 0)
+	{
+		pathname_contents = (char*) malloc(sizeof(char) * (length + 1));
+		if (!pathname_contents)
+		{
+			err = errno;
+			fclose(pathname_file);
+			goto failure;
+		}
+		size_t read_length = fread(pathname_contents, sizeof(char), length, pathname_file);
+		if (read_length != length && ferror(pathname_file)) // fread failed
+		{
+			fclose(pathname_file);
+			free(pathname_contents);
+			err = EBADE;
+			goto failure;
+		}
+		pathname_contents[length] = '\0'; // string needs to be null terminated
+	}
+	fclose(pathname_file);
+	fprintf(stderr, "[%s:%d] %s has length %ld\n", __FILE__, __LINE__, pathname, length);
+
+
 	/**
 	 * The actual writing will be handled by the server;
 	 * the client will send a buffer requesting it.
@@ -415,13 +502,24 @@ writeFile(const char* pathname, const char* dirname)
 
 	char buffer[REQUESTLEN];
 	memset(buffer, 0, REQUESTLEN);
-	snprintf(buffer, REQUESTLEN, "%d %s", WRITE, pathname);
+	snprintf(buffer, REQUESTLEN, "%d %s %lu", WRITE, pathname, length);
 
 	// it is necessary to send the whole buffer at this point
 	if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)
 	{
 		err = errno;
 		goto failure;
+	}
+	// send file contents
+	if (length != 0)
+	{
+		if (writen((long) fd_socket, (void*) pathname_contents, length) == -1)
+		{
+			err = errno;
+			free(pathname_contents);
+			goto failure;
+		}
+		free(pathname_contents);
 	}
 	// read actual output
 	char answer_str[OPVALUE_LEN];

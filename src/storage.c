@@ -465,31 +465,9 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 	return OP_SUCCESS;
 }
 
-/**
- * @brief Checks whether file is a regular file.
- * @returns 1 if it is a regular file, 0 if it is not, -1 on failure.
- * @param pathname cannot be NULL.
- * @exception It sets "errno" to "EINVAL" if any param is not valid.
- * The function may also fail and set "errno" for any of the errors
- * specified for the routine "stat".
-*/
-int is_regular_file(const char *pathname)
-{
-	if (!pathname)
-	{
-		errno = EINVAL;
-		return -1;
-	}
-	struct stat statbuf;
-	int err = stat(pathname, &statbuf);
-	if (err != 0) return -1;
-	if (S_ISREG(statbuf.st_mode))
-		return 1;
-	return 0;
-}
-
 int
-Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evicted, int client)
+Storage_writeFile(storage_t* storage, const char* pathname, size_t length,
+			 const char* contents, linked_list_t** evicted, int client)
 {
 	if (!storage || !pathname)
 	{
@@ -498,42 +476,18 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 	}
 
 	int err, exists;
-	long length; // buffer length
-	long read_length; // actual read length
 	bool failure = false; // toggled on if replacement algorithm chooses pathname as a victim
-	char* pathname_contents = NULL; // buffer of contents
+	char* copy_contents = NULL; // buffer of contents
 	char* victim_name = NULL; // used to denote victim's name
-	FILE* pathname_file; // used to denote pathname as a FILE*
 	stored_file_t* stored_file = NULL; // used to denote pathname as a file inside storage
 	stored_file_t* tmp = NULL; // used to denote victim as a file inside storage
 	linked_list_t* tmp_evicted = NULL; // list of evicted files
 
-	// must check whether pathname is a regular file
-	err = is_regular_file(pathname);
-	if (err == -1) return OP_FAILURE;
-	if (err == 0)
-	{
-		errno = EINVAL;
-		return OP_FAILURE;
-	}
-
-	// opening file
-	pathname_file = fopen(pathname, "r");
-	if (!pathname_file) return OP_FAILURE;
-
-	// calculating file's content buffer length
-	err = fseek(pathname_file, 0, SEEK_END);
-	if (err != 0) return OP_FAILURE;
-	length = ftell(pathname_file);
-	fprintf(stderr, "[%s:%d] %s has length %ld\n", __FILE__, __LINE__, pathname, (unsigned long) length);
-	err = fseek(pathname_file, 0, SEEK_SET);
-	if (err != 0) return OP_FAILURE;
 
 	// file must not be bigger than storage's size
 	if (length > storage->max_storage_size)
 	{
 		if (evicted) *evicted = tmp_evicted;
-		fclose(pathname_file);
 		errno = EFBIG;
 		return OP_FAILURE;
 	}
@@ -542,19 +496,10 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 	if (length != 0)
 	{
 		// +1 for '\0'
-		RETURN_FATAL_IF_EQ(pathname_contents, NULL, (char*) malloc(sizeof(char) * (length + 1)));
-		read_length = fread(pathname_contents, sizeof(char), length, pathname_file);
-		if (read_length != length && ferror(pathname_file)) // fread failed
-		{
-			if (evicted) *evicted = tmp_evicted;
-			fclose(pathname_file);
-			free(pathname_contents);
-			errno = EBADE;
-			return OP_FAILURE;
-		}
-		pathname_contents[length] = '\0'; // string needs to be null terminated
+		RETURN_FATAL_IF_EQ(copy_contents, NULL, (char*) malloc(sizeof(char) * (length + 1)));
+		memcpy(copy_contents, contents, length);
+		copy_contents[length] = '\0'; // string needs to be null terminated
 	}
-	fclose(pathname_file);
 
 	// as files may be deleted, no readers are allowed on storage
 	RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(storage->lock));
@@ -572,7 +517,7 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 		if (stored_file->potential_writer != client) // client cannot write this file
 		{
 			if (evicted) *evicted = tmp_evicted;
-			free(pathname_contents);
+			free(copy_contents);
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
 			fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
 			errno = EACCES;
@@ -603,29 +548,27 @@ Storage_writeFile(storage_t* storage, const char* pathname, linked_list_t** evic
 			if (evicted) *evicted = tmp_evicted;
 			if (failure) // file to be written got evicted
 			{
-				free(pathname_contents);
+				free(copy_contents);
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
 				fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
 				errno = EIDRM;
 				return OP_FAILURE;
 			}
 		}
-		if (pathname_contents) // file is not empty
+		if (copy_contents) // file is not empty
 		{
 			stored_file->contents_size = length;
-			RETURN_FATAL_IF_EQ(stored_file->contents, NULL, malloc(length + 1));
-			memcpy(stored_file->contents, pathname_contents, length + 1);
-			free(pathname_contents);
+			stored_file->contents = (void*) copy_contents;
 		}
 		stored_file->potential_writer = 0;
-		storage->storage_size+=length;
+		storage->storage_size += length;
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
 		fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
 
 	}
 	else
 	{
-		free(pathname_contents);
+		free(copy_contents);
 		RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(storage->lock));
 		fprintf(stderr, "[%s:%d] WriteLock released over storage.\n", __FILE__, __LINE__);
 

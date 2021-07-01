@@ -271,6 +271,8 @@ main(int argc, char* argv[])
 static void*
 worker_routine(void* arg)
 {
+	char* request; // request as a string
+	EXIT_IF_EQ(request, NULL, (char*) malloc(sizeof(char) * REQUESTLEN), malloc);
 	struct workers_args* workers_args = (struct workers_args*) arg;
 	bounded_buffer_t* tasks = workers_args->tasks;
 	storage_t* storage = workers_args->storage;
@@ -283,9 +285,7 @@ worker_routine(void* arg)
 	char* saveptr = NULL; // saveptr for strtok_r
 	int fd_ready; // currently being served client
 	opcodes_t request_type; // type of request to be handled
-	char* request; // request as a string
 	char* tmp_request; // copy of request as a string
-	EXIT_IF_EQ(request, NULL, (char*) malloc(sizeof(char) * REQUESTLEN), malloc);
 	char pathname[MAXPATH]; // used to denote pathname for operations on storage
 	linked_list_t* evicted = NULL; // used to store evicted files
 	void* read_buf = NULL; // buffer used for reading operation
@@ -298,6 +298,8 @@ worker_routine(void* arg)
 	size_t evicted_file_size = 0; // size of evicted file content
 	char pipe_buffer[PIPEBUFFERLEN]; // buffer to be written on pipe
 	char msg_size[SIZELEN];
+	size_t write_size = 0;
+	char* write_contents = NULL;
 	while(1)
 	{
 		// reset task string
@@ -487,12 +489,24 @@ worker_routine(void* arg)
 				evicted = NULL;
 				evicted_file_name = NULL;
 				evicted_file_content = NULL;
+				write_contents = NULL;
 				// get pathname
 				memset(pathname, 0, MAXPATH);
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
-				err = Storage_writeFile(storage, pathname, &evicted, fd_ready);
+				// get content size
+				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
+				EXIT_IF_NEQ(err, 1, sscanf(token, "%lu", &write_size), sscanf);
+				// allocate enough memory for contents
+				if (write_size != 0)
+				{
+					EXIT_IF_EQ(write_contents, NULL, (char*) malloc(write_size + 1), malloc);
+					memset(write_contents, 0, write_size + 1);
+					EXIT_IF_EQ(err, -1, readn((long) fd_ready, (void*) write_contents, write_size), readn);
+				}
+				err = Storage_writeFile(storage, pathname, write_size, write_contents, &evicted, fd_ready);
 				errnocopy = errno;
+				free(write_contents);
 				// send return value
 				memset(request, 0, REQUESTLEN);
 				snprintf(request, REQUESTLEN, "%d", err);
