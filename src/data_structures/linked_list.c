@@ -260,6 +260,35 @@ LinkedList_Contains(const linked_list_t* list, const char* key)
 	return 0;
 }
 
+linked_list_t*
+LinkedList_CopyAllKeys(const linked_list_t* list)
+{
+	if (!list || list->nelems == 0)
+	{
+		errno = EINVAL;
+		return NULL;
+	}
+	linked_list_t* tmp = LinkedList_Init(NULL);
+	char* key;
+	const node_t* curr = list->first;
+	int errnocopy;
+	while (1)
+	{
+		if (curr == NULL) break;
+		if (Node_CopyKey(curr, &key) != 0)
+		{
+			errnocopy = errno;
+			LinkedList_Free(tmp);
+			errno = errnocopy;
+			return NULL;
+		}
+		LinkedList_PushBack(tmp, key, strlen(key) + 1, NULL, 0);
+		free(key); key = NULL;
+		curr = Node_GetNext(curr);
+	}
+	return tmp;
+}
+
 void
 LinkedList_Print(const linked_list_t* list)
 {

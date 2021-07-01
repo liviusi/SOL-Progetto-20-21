@@ -145,6 +145,9 @@ LinkedList_IsEmpty(const linked_list_t* list);
 int
 LinkedList_Contains(const linked_list_t* list, const char* key);
 
+linked_list_t*
+LinkedList_CopyAllKeys(const linked_list_t* list);
+
 /**
  * Utility print function.
 */

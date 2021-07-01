@@ -69,6 +69,10 @@ int main()
 	free(key);
 	free(data);
 	LinkedList_Print(list);
+
+	linked_list_t* tmp_list = LinkedList_CopyAllKeys(list);
+	LinkedList_Print(tmp_list);
+	LinkedList_Free(tmp_list); tmp_list = NULL;
 	LinkedList_PopFront(list, &key, (void**) &data);
 	free(key);
 	free(data);
@@ -103,7 +107,7 @@ int main()
 
 	key = (char*) malloc(sizeof(char) * 128);
 	data = (char*) malloc(sizeof(char) * 128);
-	linked_list_t* tmp_list = LinkedList_Init(NULL);
+	tmp_list = LinkedList_Init(NULL);
 	strncpy(key, node1_tmp_key, 128);
 	strncpy(data, node1_tmp_data, 128);
 	LinkedList_PushBack(tmp_list, key, strlen(key) + 1, (void*) data, strlen(data) + 1);
