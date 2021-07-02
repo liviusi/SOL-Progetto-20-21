@@ -451,8 +451,6 @@ main(int argc, char* argv[])
 	cleanup:
 		for (int i = 0; i < argc - 1; i++)
 		{
-			fprintf(stderr, "commands[%d]: %s", i, commands[i]);
-			fprintf(stderr, "\targuments[%d]: %s\n", i, arguments[i]);
 			free(commands[i]);
 			free(arguments[i]);
 		}
