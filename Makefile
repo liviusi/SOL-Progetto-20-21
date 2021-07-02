@@ -8,6 +8,7 @@ OBJ_DIR := ./obj
 SRC_DIR := ./src
 TEST_DIR := ./tests
 HEADERS_DIR = ./includes/
+DUMMIES_DIR = ./dummies
 
 TARGETS = server client test1
 
@@ -108,16 +109,17 @@ client: $(OBJS-CLIENT)
 server: $(OBJS-SERVER)
 	$(CC) $(CFLAGS) -o $(BUILD_DIR)/server $(OBJS-SERVER) $(LIBS)
 
-test1: clean client server
-	@echo "NUMBER OF THREAD WORKERS = 1\nMAXIMUM NUMBER OF STORABLE FILES = 10000\nMAXIMUM STORAGE SIZE = 128000000\nSOCKET FILE PATH = $(PWD)/socket.sk\nLOG FILE PATH = $(PWD)/log.log" > config1.txt
+test1: client server
+	@echo "NUMBER OF THREAD WORKERS = 1\nMAXIMUM NUMBER OF STORABLE FILES = 10000\nMAXIMUM STORAGE SIZE = 128000000\nSOCKET FILE PATH = $(PWD)/socket.sk\nLOG FILE PATH = $(PWD)/logs/log1.log" > config1.txt
 	@chmod +x scripts/script1.sh
 	scripts/script1.sh
 
-.PHONY: clean cleanall all
+test2: client server
+	@echo "NUMBER OF THREAD WORKERS = 4\nMAXIMUM NUMBER OF STORABLE FILES = 10\nMAXIMUM STORAGE SIZE = 1000000\nSOCKET FILE PATH = $(PWD)/socket.sk\nLOG FILE PATH = $(PWD)/logs/log2.log" > config2.txt
+	@chmod +x scripts/scripts2.sh
+	scripts/scripts2.sh
+
+.PHONY: clean cleanall all dummies
 all: $(TARGETS)
 clean cleanall:
-	rm -rf $(BUILD_DIR) $(OBJ_DIR) *.txt *.log
-	mkdir $(BUILD_DIR)
-	mkdir $(OBJ_DIR)
-	@touch $(BUILD_DIR)/.keep
-	@touch $(OBJ_DIR)/.keep
+	rm -rf $(BUILD_DIR)/* $(OBJ_DIR)/* logs/*.log test1 test2
