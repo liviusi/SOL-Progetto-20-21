@@ -6,18 +6,6 @@
 #ifndef _RWLOCK_H_
 #define _RWLOCK_H_
 
-#ifdef DEBUG
-#include <pthread.h>
-#include <stdbool.h>
-struct _rwlock
-{
-	pthread_mutex_t mutex; // mutex is used to control access to struct
-	pthread_cond_t cond;
-	unsigned int readers; // number of readers
-	bool pending_writer; // toggled on when there is a writer waiting
-};
-#endif
-
 // Struct fields are not exposed to maintain invariant.
 typedef struct _rwlock rwlock_t;
 

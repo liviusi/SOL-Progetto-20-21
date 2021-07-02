@@ -9,18 +9,6 @@
 #include <stdlib.h>
 #include <errno.h>
 
-#ifdef DEBUG
-struct _node
-{
-	char* key;
-	unsigned long data_sz;
-	void* data;
-	struct _node* prev;
-	struct _node* next;
-	void (*free_data) (void*);
-};
-#endif
-
 /**
  * Generic node struct used to save data inside doubly-linked-list data structure.
 */

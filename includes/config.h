@@ -8,18 +8,6 @@
 
 #include <stdlib.h>
 
-#ifdef DEBUG
-struct _server_config
-{
-	unsigned long
-		workers_no,
-		max_files_no,
-		storage_size;
-	char socket_path[MAXPATH];
-	char log_path[MAXPATH];
-};
-#endif
-
 // Struct fields are not exposed to forbid user from editing them
 typedef struct _server_config server_config_t;
 

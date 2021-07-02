@@ -9,16 +9,6 @@
 #include <stdlib.h>
 #include <node.h>
 
-#ifdef DEBUG
-struct _linked_list
-{
-	node_t* first;
-	node_t* last;
-	unsigned long nelems;
-	void (*free_data) (void*);
-};
-#endif
-
 // Struct fields are not exposed to maintain invariant.
 typedef struct _linked_list linked_list_t;
 

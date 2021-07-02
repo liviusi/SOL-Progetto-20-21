@@ -8,31 +8,13 @@
 
 #include <stdlib.h>
 
+#include <linked_list.h>
+
 typedef enum _replacement_algo
 {
 	FIFO
 } replacement_algo_t;
 
-#define DEBUG
-#ifdef DEBUG
-#include <rwlock.h>
-#include <hashtable.h>
-#include <linked_list.h>
-#include <pthread.h>
-struct _storage
-{
-	hashtable_t* files;
-	replacement_algo_t algorithm; // right now only FIFO is to be supported.
-	linked_list_t* sorted_files;
-
-	size_t max_files_no;
-	size_t max_storage_size;
-	size_t files_no;
-	size_t storage_size;
-
-	rwlock_t* lock;
-};
-#endif
 
 typedef struct _storage storage_t;
 
@@ -215,7 +197,7 @@ Storage_removeFile(storage_t* storage, const char* pathname, int client);
  * Utility print function.
 */
 void
-Storage_Print(const storage_t* storage);
+Storage_Print(storage_t* storage);
 
 /**
  * Frees allocated resources.
