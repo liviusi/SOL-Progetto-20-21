@@ -1,5 +1,0 @@
-NUMBER OF THREAD WORKERS = 10
-MAXIMUM NUMBER OF STORABLE FILES = 50
-MAXIMUM STORAGE SIZE = 25000
-SOCKET FILE PATH = /home/liviusi/Desktop/SOL-Progetto-20-21/socket.sk
-LOG FILE PATH = /home/liviusi/Desktop/SOL-Progetto-20-21/log.log
