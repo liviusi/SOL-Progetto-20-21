@@ -22,7 +22,6 @@
 #define SOCKETPATH "SOCKET FILE PATH = "
 #define LOGPATH "LOG FILE PATH = "
 
-#ifndef DEBUG
 struct _server_config
 {
 	unsigned long
@@ -32,7 +31,6 @@ struct _server_config
 	char socket_path[MAXPATH]; // absolute path to socket file
 	char log_path[MAXPATH]; // absolute path to log file
 };
-#endif
 
 server_config_t* ServerConfig_Init()
 {

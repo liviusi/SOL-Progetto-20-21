@@ -10,6 +10,7 @@
 #include <sys/un.h>
 #include <sys/socket.h>
 #include <sys/select.h>
+#include <pthread.h>
 #include <unistd.h>
 
 #include <config.h>
@@ -28,11 +29,10 @@
 #define CLIENT_LEFT "0"
 
 #define NEXT_ITERATION \
-	{ \
-		free(fd_ready_string); \
-		continue; \
-	}
-
+{ \
+	free(fd_ready_string); \
+	continue; \
+}
 
 #define REQUEST_DONE \
 { \
@@ -42,8 +42,18 @@
 	break; \
 }
 
+#define LOG_EVENT(...) \
+do \
+{ \
+	if (pthread_mutex_lock(&log_mutex) != 0) { perror("pthread_mutex_lock"); exit(1); } \
+	fprintf(log_file, __VA_ARGS__); \
+	if (pthread_mutex_unlock(&log_mutex) != 0) { perror("pthread_mutex_unlock"); exit(1); } \
+} while(0);
+
 volatile sig_atomic_t terminate = 0;
 volatile sig_atomic_t no_more_clients = 0;
+
+pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void* worker_routine(void*);
 void signal_handler(int);
@@ -53,6 +63,7 @@ struct workers_args
 	storage_t* storage;
 	bounded_buffer_t* tasks;
 	int pipe_output_channel;
+	FILE* log_file;
 };
 
 int
@@ -83,6 +94,8 @@ main(int argc, char* argv[])
 	char pipe_buffer[PIPEBUFFERLEN]; // buffer used by pipe
 	int pipe_msg; // message read from pipe
 	char new_task[TASKLEN]; // used to denote task to be added as a string
+	char* log_name = NULL;
+	FILE* log_file = NULL;
 
 	// --------------
 	// handle signals:
@@ -140,21 +153,25 @@ main(int argc, char* argv[])
 	FD_SET(fd_socket, &master_read_set);
 	FD_SET(pipe_worker2manager[0], &master_read_set);
 
+	// initialize log file
+	EXIT_IF_EQ(err, 0, (int) ServerConfig_GetLogFilePath(config, &log_name), ServerConfig_GetLogFilePath);
+	mode_t oldmask = umask(033);
+	EXIT_IF_EQ(log_file, NULL, fopen(log_name, "w+"), fopen);
+	umask(oldmask);
+	free(log_name);
+
 	// initialize workers' arguments
-	EXIT_IF_EQ(workers_args, NULL, (struct workers_args*)
-				malloc(sizeof(struct workers_args)), malloc);
+	EXIT_IF_EQ(workers_args, NULL, (struct workers_args*) malloc(sizeof(struct workers_args)), malloc);
 	workers_args->storage = storage;
 	workers_args->tasks = tasks;
 	workers_args->pipe_output_channel = pipe_worker2manager[1];
+	workers_args->log_file = log_file;
 
 	// initialize workers pool
-	EXIT_IF_EQ(workers_pool_size, 0, ServerConfig_GetWorkersNo(config),
-				ServerConfig_GetWorkersNo);
-	EXIT_IF_EQ(workers, NULL, (pthread_t*)
-				malloc(sizeof(pthread_t) * workers_pool_size), malloc);
+	EXIT_IF_EQ(workers_pool_size, 0, ServerConfig_GetWorkersNo(config), ServerConfig_GetWorkersNo);
+	EXIT_IF_EQ(workers, NULL, (pthread_t*) malloc(sizeof(pthread_t) * workers_pool_size), malloc);
 	for (size_t i = 0; i < (size_t) workers_pool_size; i++)
-		EXIT_IF_EQ(err, -1, pthread_create(&(workers[i]), NULL,
-					&worker_routine, (void*) workers_args), pthread_create);
+		EXIT_IF_EQ(err, -1, pthread_create(&(workers[i]), NULL, &worker_routine, (void*) workers_args), pthread_create);
 
 	// -----------
 	// main loop
@@ -212,11 +229,10 @@ main(int argc, char* argv[])
 				else if (i == fd_socket) // new client
 				{
 					EXIT_IF_EQ(fd_new_client, -1, accept(fd_socket, NULL, 0), accept);
-					fprintf(stdout, "Accepted new client : %d\n", fd_new_client);
-
 					if (no_more_clients) close(fd_new_client);
 					else
 					{
+						LOG_EVENT("New client accepted : %d.\n", fd_new_client);
 						FD_SET(fd_new_client, &master_read_set);
 						online_clients++;
 						fd_num = MAX(fd_new_client, fd_num);
@@ -226,12 +242,10 @@ main(int argc, char* argv[])
 				{
 					memset(new_task, 0, TASKLEN);
 					snprintf(new_task, TASKLEN, "%d", i);
-					fprintf(stdout, "New task received from : %s\n", new_task);
 					//FD_CLR(i, &master_read_set);
 					if (i == fd_num) fd_num--;
 					// push ready file descriptor to task queue for workers
-					EXIT_IF_EQ(err, -1, BoundedBuffer_Enqueue(tasks, new_task),
-								BoundedBuffer_Enqueue);
+					EXIT_IF_EQ(err, -1, BoundedBuffer_Enqueue(tasks, new_task), BoundedBuffer_Enqueue);
 				}
 			}
 		}
@@ -243,8 +257,7 @@ main(int argc, char* argv[])
 	cleanup:
 		snprintf(new_task, TASKLEN, "%d", TERMINATE_WORKER);
 		for (size_t i = 0; i < (size_t) workers_pool_size; i++)
-			EXIT_IF_NEQ(err, 0, BoundedBuffer_Enqueue(tasks, new_task),
-						BoundedBuffer_Enqueue);
+			EXIT_IF_NEQ(err, 0, BoundedBuffer_Enqueue(tasks, new_task), BoundedBuffer_Enqueue);
 		for (size_t i = 0; i < (size_t) workers_pool_size; i++)
 			pthread_join(workers[i], NULL);
 		ServerConfig_Free(config);
@@ -257,6 +270,7 @@ main(int argc, char* argv[])
 		free(workers);
 		close(pipe_worker2manager[0]);
 		close(pipe_worker2manager[1]);
+		fclose(log_file);
 }
 
 /**
@@ -276,6 +290,7 @@ worker_routine(void* arg)
 	struct workers_args* workers_args = (struct workers_args*) arg;
 	bounded_buffer_t* tasks = workers_args->tasks;
 	storage_t* storage = workers_args->storage;
+	FILE* log_file = workers_args->log_file;
 	int pipe_output_channel = workers_args->pipe_output_channel;
 	int err; // used as a placeholder for functions' output values
 	int tmp_err; // used as a placeholder for functions' output values
@@ -304,14 +319,14 @@ worker_routine(void* arg)
 	char* read_file_name = NULL;
 	char* read_file_content = NULL;
 	size_t read_file_size = 0;
+	size_t tot_read_size = 0;
 	size_t N = 0;
 	while(1)
 	{
 		// reset task string
 		fd_ready_string = NULL;
 		// read ready fd from tasks' queue
-		EXIT_IF_NEQ(err, 0, BoundedBuffer_Dequeue(tasks, &fd_ready_string),
-					BoundedBuffer_Dequeue);
+		EXIT_IF_NEQ(err, 0, BoundedBuffer_Dequeue(tasks, &fd_ready_string), BoundedBuffer_Dequeue);
 		EXIT_IF_NEQ(err, 1, sscanf(fd_ready_string, "%d", &fd_ready), sscanf);
 		if (fd_ready == TERMINATE_WORKER) // termination message
 		{
@@ -319,15 +334,12 @@ worker_routine(void* arg)
 			break;
 		}
 		memset(request, 0, TASKLEN);
-		EXIT_IF_EQ(err, -1, readn((long) fd_ready, (void*) request,
-					REQUESTLEN), readn);
-		// request now contains the operation to be run
-		// and its arguments as a string
+		EXIT_IF_EQ(err, -1, readn((long) fd_ready, (void*) request, REQUESTLEN), readn);
+		// request now contains the operation to be run and its arguments as a string
 		tmp_request = request;
 		token = strtok_r(tmp_request, " ", &saveptr);
 		if (!token) NEXT_ITERATION;
 		EXIT_IF_NEQ(err, 1, sscanf(token, "%d", (int*) &request_type), sscanf);
-		fflush(stdout);
 		switch (request_type)
 		{
 			case OPEN:
@@ -335,19 +347,16 @@ worker_routine(void* arg)
 				memset(pathname, 0, REQUESTLEN);
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%s", pathname), sscanf);
-				// get flags
 				flags = 0;
 				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
 				EXIT_IF_NEQ(err, 1, sscanf(token, "%d", &flags), sscanf);
-				//fprintf(stderr, "pathname : %s\nflags : %d\nfd_ready : %d\n", pathname, flags, fd_ready);
 				err = Storage_openFile(storage, pathname, flags, fd_ready);
 				errnocopy = errno;
 				// send return value
 				memset(request, 0, REQUESTLEN);
 				snprintf(request, REQUESTLEN, "%d", err);
-				fprintf(stderr, "[%s:%d] openFile %s %d : %d\n", __FILE__, __LINE__, pathname, flags, err);
-				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
-							strlen(request) + 1), writen);
+				LOG_EVENT("[%s:%d] openFile %s %d : %d.\n", __FILE__, __LINE__, pathname, flags, err);
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, strlen(request) + 1), writen);
 				switch (err)
 				{
 					case OP_SUCCESS:
@@ -356,15 +365,13 @@ worker_routine(void* arg)
 					case OP_FAILURE:
 						memset(request, 0, REQUESTLEN);
 						snprintf(request, REQUESTLEN, "%d", errnocopy);
-						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-									ERRNOLEN), writen);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 						break;
 
 					case OP_FATAL:
 						memset(request, 0, REQUESTLEN);
 						snprintf(request, REQUESTLEN, "%d", errnocopy);
-						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-									ERRNOLEN), writen);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 						exit(1);
 				}
 				flags = 0;
@@ -381,9 +388,8 @@ worker_routine(void* arg)
 				// send return value
 				memset(request, 0, REQUESTLEN);
 				snprintf(request, REQUESTLEN, "%d", err);
-				fprintf(stderr, "[%s:%d] closeFile %s : %d\n", __FILE__, __LINE__, pathname, err);
-				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
-							strlen(request) + 1), writen);
+				LOG_EVENT("[%s:%d] closeFile %s : %d.\n", __FILE__, __LINE__, pathname, err);
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, strlen(request) + 1), writen);
 				switch (err)
 				{
 					case OP_SUCCESS:
@@ -392,15 +398,13 @@ worker_routine(void* arg)
 					case OP_FAILURE:
 						memset(request, 0, REQUESTLEN);
 						snprintf(request, REQUESTLEN, "%d", errnocopy);
-						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-									ERRNOLEN), writen);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 						break;
 
 					case OP_FATAL:
 						memset(request, 0, REQUESTLEN);
 						snprintf(request, REQUESTLEN, "%d", errnocopy);
-						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-									ERRNOLEN), writen);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 						exit(1);
 				}
 				REQUEST_DONE;
@@ -425,9 +429,8 @@ worker_routine(void* arg)
 					// send return value
 					memset(request, 0, REQUESTLEN);
 					snprintf(request, REQUESTLEN, "%d", err);
-					fprintf(stderr, "[%s:%d] readFile %s : %d\n", __FILE__, __LINE__, pathname, err);
-					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
-								strlen(request) + 1), writen);
+					LOG_EVENT("[%s:%d] readFile %s : %d -> %lu.\n", __FILE__, __LINE__, pathname, err, read_size);
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, strlen(request) + 1), writen);
 					switch (err)
 					{
 						case OP_SUCCESS:
@@ -436,22 +439,19 @@ worker_routine(void* arg)
 						case OP_FAILURE:
 							memset(request, 0, REQUESTLEN);
 							snprintf(request, REQUESTLEN, "%d", errnocopy);
-							EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-										ERRNOLEN), writen);
+							EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 							break;
 
 						case OP_FATAL:
 							memset(request, 0, REQUESTLEN);
 							snprintf(request, REQUESTLEN, "%d", errnocopy);
-							EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-										ERRNOLEN), writen);
+							EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 							exit(1);
 					}
 					// send size
 					memset(msg_size, 0, SIZELEN);
 					snprintf(msg_size, SIZELEN, "%lu", read_size);
-					EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) msg_size,
-								SIZELEN), writen);
+					EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) msg_size, SIZELEN), writen);
 					if (read_size != 0)
 						EXIT_IF_EQ(err, -1, writen((long) fd_ready, read_buf, read_size), writen);
 					free(read_buf); read_buf = NULL;
@@ -463,9 +463,8 @@ worker_routine(void* arg)
 					// send return value
 					memset(request, 0, REQUESTLEN);
 					snprintf(request, REQUESTLEN, "%d", err);
-					fprintf(stderr, "[%s:%d] readFile %s NULL: %d\n", __FILE__, __LINE__, pathname, err);
-					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
-								strlen(request) + 1), writen);
+					LOG_EVENT("[%s:%d] readFile %s NULL: %d -> %lu.\n", __FILE__, __LINE__, pathname, err, read_size);
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, strlen(request) + 1), writen);
 					switch (err)
 					{
 						case OP_SUCCESS:
@@ -474,15 +473,13 @@ worker_routine(void* arg)
 						case OP_FAILURE:
 							memset(request, 0, REQUESTLEN);
 							snprintf(request, REQUESTLEN, "%d", errnocopy);
-							EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-										ERRNOLEN), writen);
+							EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 							break;
 
 						case OP_FATAL:
 							memset(request, 0, REQUESTLEN);
 							snprintf(request, REQUESTLEN, "%d", errnocopy);
-							EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-										ERRNOLEN), writen);
+							EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 							exit(1);
 					}
 				}
@@ -515,9 +512,9 @@ worker_routine(void* arg)
 				// send return value
 				memset(request, 0, REQUESTLEN);
 				snprintf(request, REQUESTLEN, "%d", err);
-				fprintf(stderr, "[%s:%d] writeFile %s : %d\n", __FILE__, __LINE__, pathname, err);
-				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
-							strlen(request) + 1), writen);
+				LOG_EVENT("[%s:%d] writeFile %s [%lu] : %d.\n\tVictims : %lu.\n", __FILE__, __LINE__, pathname, write_size,
+							err, LinkedList_GetNumberOfElements(evicted));
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, strlen(request) + 1), writen);
 				switch (err)
 				{
 					case OP_SUCCESS:
@@ -526,15 +523,13 @@ worker_routine(void* arg)
 					case OP_FAILURE:
 						memset(request, 0, REQUESTLEN);
 						snprintf(request, REQUESTLEN, "%d", errnocopy);
-						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-									ERRNOLEN), writen);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 						break;
 
 					case OP_FATAL:
 						memset(request, 0, REQUESTLEN);
 						snprintf(request, REQUESTLEN, "%d", errnocopy);
-						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-									ERRNOLEN), writen);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 						break;
 				}
 				// send number of victims
@@ -545,20 +540,19 @@ worker_routine(void* arg)
 				while (LinkedList_GetNumberOfElements(evicted) != 0)
 				{
 					errno = 0;
-					evicted_file_size = LinkedList_PopFront(evicted, &evicted_file_name,
-								(void**) &evicted_file_content);
+					evicted_file_size = LinkedList_PopFront(evicted, &evicted_file_name, (void**) &evicted_file_content);
 					if (evicted_file_size == 0 && errno == ENOMEM) exit(1);
 					memset(request, 0, REQUESTLEN);
 					snprintf(request, REQUESTLEN, "%s", evicted_file_name); // should error handle this
 					// send victim's name
 					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, REQUESTLEN), writen);
+					LOG_EVENT("\tVictim name: %s.\n", evicted_file_name);
 					// send victim's contents size
 					memset(msg_size, 0, SIZELEN);
 					snprintf(msg_size, SIZELEN, "%lu", evicted_file_size);
 					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) msg_size, SIZELEN), writen);
 					// send actual contents
-					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*)
-								evicted_file_content, evicted_file_size), writen);
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) evicted_file_content, evicted_file_size), writen);
 					free(evicted_file_name); evicted_file_name = NULL;
 					free(evicted_file_content); evicted_file_content = NULL;
 				}
@@ -585,15 +579,15 @@ worker_routine(void* arg)
 					memset(append_buf, 0, append_size + 1);
 					EXIT_IF_EQ(err, -1, readn((long) fd_ready, append_buf, append_size), readn);
 				}
-				err = Storage_appendToFile(storage, pathname, append_buf, append_size, NULL, fd_ready);
+				err = Storage_appendToFile(storage, pathname, append_buf, append_size, &evicted, fd_ready);
 				errnocopy = errno;
 				free(append_buf);
 				// send return value
 				memset(request, 0, REQUESTLEN);
 				snprintf(request, REQUESTLEN, "%d", err);
-				fprintf(stderr, "[%s:%d] appendToFile %s : %d\n", __FILE__, __LINE__, pathname, err);
-				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
-							strlen(request) + 1), writen);
+				LOG_EVENT("[%s:%d] appendToFile %s : %d.\n\tVictims : %lu.\n", __FILE__, __LINE__, pathname,
+							err, LinkedList_GetNumberOfElements(evicted));
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, strlen(request) + 1), writen);
 				switch (err)
 				{
 					case OP_SUCCESS:
@@ -602,15 +596,13 @@ worker_routine(void* arg)
 					case OP_FAILURE:
 						memset(request, 0, REQUESTLEN);
 						snprintf(request, REQUESTLEN, "%d", errnocopy);
-						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-									ERRNOLEN), writen);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 						break;
 
 					case OP_FATAL:
 						memset(request, 0, REQUESTLEN);
 						snprintf(request, REQUESTLEN, "%d", errnocopy);
-						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-									ERRNOLEN), writen);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 						break;
 				}
 				// send number of victims
@@ -621,20 +613,19 @@ worker_routine(void* arg)
 				while (LinkedList_GetNumberOfElements(evicted) != 0)
 				{
 					errno = 0;
-					evicted_file_size = LinkedList_PopFront(evicted, &evicted_file_name,
-								(void**) &evicted_file_content);
+					evicted_file_size = LinkedList_PopFront(evicted, &evicted_file_name, (void**) &evicted_file_content);
 					if (evicted_file_size == 0 && errno == ENOMEM) exit(1);
 					memset(request, 0, REQUESTLEN);
 					snprintf(request, REQUESTLEN, "%s", evicted_file_name); // should error handle this
 					// send victim's name
 					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, REQUESTLEN), writen);
+					LOG_EVENT("\tVictim name: %s.\n", evicted_file_name);
 					// send victim's contents size
 					memset(msg_size, 0, SIZELEN);
 					snprintf(msg_size, SIZELEN, "%lu", evicted_file_size);
 					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) msg_size, SIZELEN), writen);
 					// send actual contents
-					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*)
-								evicted_file_content, evicted_file_size), writen);
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) evicted_file_content, evicted_file_size), writen);
 					free(evicted_file_name); evicted_file_name = NULL;
 					free(evicted_file_content); evicted_file_content = NULL;
 				}
@@ -654,9 +645,7 @@ worker_routine(void* arg)
 				// send return value
 				memset(request, 0, REQUESTLEN);
 				snprintf(request, REQUESTLEN, "%d", err);
-				fprintf(stderr, "[%s:%d] readNFiles %lu : %d\n", __FILE__, __LINE__, N, err);
-				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
-							strlen(request) + 1), writen);
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, strlen(request) + 1), writen);
 				switch (err)
 				{
 					case OP_SUCCESS:
@@ -665,15 +654,13 @@ worker_routine(void* arg)
 					case OP_FAILURE:
 						memset(request, 0, REQUESTLEN);
 						snprintf(request, REQUESTLEN, "%d", errnocopy);
-						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-									ERRNOLEN), writen);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 						break;
 
 					case OP_FATAL:
 						memset(request, 0, REQUESTLEN);
 						snprintf(request, REQUESTLEN, "%d", errnocopy);
-						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
-									ERRNOLEN), writen);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request, ERRNOLEN), writen);
 						break;
 				}
 				// send number of successfully read files
@@ -687,6 +674,7 @@ worker_routine(void* arg)
 					read_file_size = LinkedList_PopFront(read_files, &read_file_name,
 								(void**) &read_file_content);
 					if (read_file_size == 0 && errno == ENOMEM) exit(1);
+					tot_read_size += read_file_size;
 					memset(request, 0, REQUESTLEN);
 					snprintf(request, REQUESTLEN, "%s", read_file_name); // should error handle this
 					// send file's name
@@ -702,6 +690,7 @@ worker_routine(void* arg)
 					free(read_file_content); read_file_content = NULL;
 				}
 				LinkedList_Free(read_files); read_files = NULL;
+				LOG_EVENT("[%s:%d] readNFiles %lu : %d -> %lu.\n", __FILE__, __LINE__, N, err, tot_read_size);
 				if (err == OP_FATAL) exit(1);
 				REQUEST_DONE;
 				break;
@@ -716,7 +705,7 @@ worker_routine(void* arg)
 				// send return value
 				memset(request, 0, REQUESTLEN);
 				snprintf(request, REQUESTLEN, "%d", err);
-				fprintf(stderr, "[%s:%d] lockFile %s %d : %d\n", __FILE__, __LINE__, pathname, flags, err);
+				LOG_EVENT("[%s:%d] lockFile %s %d : %d.\n", __FILE__, __LINE__, pathname, flags, err);
 				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
 							strlen(request) + 1), writen);
 				switch (err)
@@ -751,7 +740,7 @@ worker_routine(void* arg)
 				// send return value
 				memset(request, 0, REQUESTLEN);
 				snprintf(request, REQUESTLEN, "%d", err);
-				fprintf(stderr, "[%s:%d] unlockFile %s %d : %d\n", __FILE__, __LINE__, pathname, flags, err);
+				LOG_EVENT("[%s:%d] unlockFile %s %d : %d.\n", __FILE__, __LINE__, pathname, flags, err);
 				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
 							strlen(request) + 1), writen);
 				switch (err)
@@ -785,7 +774,7 @@ worker_routine(void* arg)
 				// send return value
 				memset(request, 0, REQUESTLEN);
 				snprintf(request, REQUESTLEN, "%d", err);
-				fprintf(stderr, "[%s:%d] removeFile %s : %d\n", __FILE__, __LINE__, pathname, err);
+				LOG_EVENT("[%s:%d] removeFile %s : %d.\n", __FILE__, __LINE__, pathname, err);
 				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
 							strlen(request) + 1), writen);
 				switch (err)
