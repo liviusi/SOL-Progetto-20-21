@@ -1097,7 +1097,7 @@ Storage_Print(storage_t* storage)
 	storage->reached_storage_size = MAX(storage->reached_storage_size, storage->storage_size);
 	printf("\nSTORAGE DETAILS\n");
 	printf("MAXIMUM AMOUNT OF FILES STORED:\t%lu.\n", storage->reached_files_no);
-	printf("MAXIMUM STORAGE SIZE REACHED:\t%5f [MB].\n", storage->reached_storage_size * MBYTE);
+	printf("MAXIMUM STORAGE SIZE REACHED:\t%5f / %5f [MB].\n", storage->reached_storage_size * MBYTE, storage->max_storage_size * MBYTE);
 	printf("REPLACEMENT ALGORITHM GOT TRIGGERED:\t%lu times.\n", storage->evictions_no);
 	printf("STORAGE CONTAINS:\t");
 	LinkedList_Print(storage->sorted_files);

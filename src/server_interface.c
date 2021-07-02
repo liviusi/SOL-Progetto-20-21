@@ -103,6 +103,25 @@ closeConnection(const char* sockname)
 		err = ENOTCONN;
 		goto failure;
 	}
+
+	/** 
+	 * As the server needs to be notified whenever a client is about to leave
+	 * it is first required the client sends a "termination" message.
+	*/
+
+	char buffer[REQUESTLEN];
+	memset(buffer, 0, REQUESTLEN);
+	snprintf(buffer, REQUESTLEN, "%d", TERMINATE);
+
+	// it is necessary to send the whole buffer at this point
+	if (writen((long) fd_socket, (void*) buffer, REQUESTLEN) == -1)
+	{
+		err = errno;
+		goto failure;
+	}
+
+	// there is no need to wait for a response
+
 	if (close(fd_socket) == -1)
 	{
 		err = errno;

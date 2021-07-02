@@ -34,7 +34,8 @@ typedef enum opcodes
 	READ_N,
 	LOCK,
 	UNLOCK,
-	REMOVE
+	REMOVE,
+	TERMINATE
 } opcodes_t;
 
 #endif

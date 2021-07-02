@@ -114,6 +114,7 @@ main(int argc, char* argv[])
 	char* cwd_copy = NULL;
 	int upto = 0;
 	char filepath[PATH_MAX];
+	bool connected = false;
 	// parse argv into commands to be executed
 	for (int i = 1; i < argc; i++)
 	{
@@ -166,7 +167,8 @@ main(int argc, char* argv[])
 		{
 			case 'f':
 				// execute openConnection
-				openConnection(sockname, msec, abstime);
+				if (openConnection(sockname, msec, abstime) == 0)
+					connected = true;
 				break;
 
 			case 'w':
@@ -193,7 +195,7 @@ main(int argc, char* argv[])
 						errno = 0;
 						if (LinkedList_PopFront(R_files, &filename, NULL) == 0 && errno == ENOMEM)
 							goto cleanup;
-						fprintf(stderr, "filename : %s\n", filename);
+						//fprintf(stderr, "filename : %s\n", filename);
 						SET_FLAG(open_flags, O_CREATE);
 						SET_FLAG(open_flags, O_LOCK);
 						openFile(filename, open_flags);
@@ -449,6 +451,7 @@ main(int argc, char* argv[])
 
 
 	cleanup:
+		if (connected) closeConnection(sockname);
 		for (int i = 0; i < argc - 1; i++)
 		{
 			free(commands[i]);
