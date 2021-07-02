@@ -343,6 +343,21 @@ main(int argc, char* argv[])
 					}
 				}
 				break;
+			
+			case 'R':
+				// read up to N files
+				tmp = arguments[i];
+				// check whether N has been specified
+				if (tmp[0] != '\0')
+					sscanf(arguments[i], "%d", &upto);
+				else
+					upto = 0;
+				if (i + 2 < argc - 1 && commands[i+2][0] == 'd')
+					readNFiles(upto, arguments[i+2]);
+				else
+					readNFiles(upto, NULL);
+				usleep(1000 * msec_sleeping);
+				break;
 
 			case 't':
 				// set waiting time
@@ -436,6 +451,8 @@ main(int argc, char* argv[])
 	cleanup:
 		for (int i = 0; i < argc - 1; i++)
 		{
+			fprintf(stderr, "commands[%d]: %s", i, commands[i]);
+			fprintf(stderr, "\targuments[%d]: %s\n", i, arguments[i]);
 			free(commands[i]);
 			free(arguments[i]);
 		}

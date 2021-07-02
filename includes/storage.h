@@ -71,6 +71,9 @@ Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t ch
 int
 Storage_openFile(storage_t* storage, const char* pathname, int flags, int client);
 
+int
+Storage_readNFiles(storage_t* storage, linked_list_t** read_files, size_t n, int client);
+
 /**
  * @brief Handles file reading.
  * @returns 0 on success, 1 on failure, 2 on fatal errors.

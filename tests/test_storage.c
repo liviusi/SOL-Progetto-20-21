@@ -33,12 +33,12 @@ int main(int argc, char* argv[])
 	err = Storage_openFile(storage, "/home/liviusi/file1", 0, 1);
 	assert(err == 1);
 
-	err = Storage_openFile(storage, "/home/liviusi/file7", 0, 1);
+	err = Storage_openFile(storage, "/home/liviusi/file7", O_CREATE, 1);
 	assert(err == 0);
 	err = Storage_openFile(storage, "/home/liviusi/file7", 0, 2);
 	assert(err == 0);
 	err = Storage_openFile(storage, "/home/liviusi/file8", 0, 1);
-	assert(err == 0);
+	assert(err == 1);
 	//Storage_Print(storage);
 
 	err = Storage_closeFile(storage, "/home/liviusi/file1", 0);
@@ -90,38 +90,34 @@ int main(int argc, char* argv[])
 
 	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/Makefile", O_CREATE|O_LOCK, 5);
 	assert(err == 0);
-	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/Makefile", NULL, 5);
-	assert(err == 0);
 	//Storage_Print(storage);
 	err = Storage_removeFile(storage, "/home/liviusi/file4", 1);
 	assert(err == 0);
-
-	linked_list_t* list = NULL;
 	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/src/data_structures/rwlock.c", O_CREATE|O_LOCK, 3);
 	assert(err == 0);
 	//Storage_Print(storage);
-	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/src/data_structures/rwlock.c", &list, 3);
-	//LinkedList_Print(list);
-	assert(err == 0);
-	LinkedList_Free(list); list = NULL;
 
 	err = Storage_openFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/includes/wrappers.h", O_CREATE|O_LOCK, 5);
 	assert(err == 0);
-	err = Storage_writeFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/includes/wrappers.h", &list, 5);
-	assert(err == 0);
 	//Storage_Print(storage);
 	//LinkedList_Print(list);
-	LinkedList_Free(list); list = NULL;
+	linked_list_t* list = NULL;
 	char* string = (char*) malloc(sizeof(char) * 100);
 	strcpy(string, STRING_SAMPLE);
 	string[strlen(STRING_SAMPLE) + 1] = '\0';
 	err = Storage_appendToFile(storage, "/home/liviusi/Desktop/SOL-Progetto-20-21/src/data_structures/rwlock.c", (void*) string, strlen(string) + 1, &list, 3);
 	//fprintf(stderr, "errno = %d\n", errno);
-	assert(err == 1);
+	assert(err == 0);
 	free(string);
 	//Storage_Print(storage);
 	//LinkedList_Print(list);
 	LinkedList_Free(list);
+
+	linked_list_t* read = NULL;
+	err = Storage_readNFiles(storage, &read, 0, 1);
+	assert (err == 0);
+	LinkedList_Print(read); LinkedList_Free(read);
+	Storage_Print(storage);
 
 	Storage_Free(storage);
 	ServerConfig_Free(config);

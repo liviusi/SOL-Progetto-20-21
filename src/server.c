@@ -300,6 +300,11 @@ worker_routine(void* arg)
 	char msg_size[SIZELEN];
 	size_t write_size = 0;
 	char* write_contents = NULL;
+	linked_list_t* read_files = NULL;
+	char* read_file_name = NULL;
+	char* read_file_content = NULL;
+	size_t read_file_size = 0;
+	size_t N = 0;
 	while(1)
 	{
 		// reset task string
@@ -639,6 +644,65 @@ worker_routine(void* arg)
 				break;
 
 			case READ_N:
+				read_files = NULL;
+				N = 0;
+				// get N
+				EXIT_IF_EQ(token, NULL, strtok_r(NULL, " ", &saveptr), strtok_r);
+				EXIT_IF_NEQ(err, 1, sscanf(token, "%lu", &N), sscanf);
+				err = Storage_readNFiles(storage, &read_files, N, fd_ready);
+				errnocopy = errno;
+				// send return value
+				memset(request, 0, REQUESTLEN);
+				snprintf(request, REQUESTLEN, "%d", err);
+				fprintf(stderr, "[%s:%d] readNFiles %lu : %d\n", __FILE__, __LINE__, N, err);
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request,
+							strlen(request) + 1), writen);
+				switch (err)
+				{
+					case OP_SUCCESS:
+						break;
+
+					case OP_FAILURE:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						break;
+
+					case OP_FATAL:
+						memset(request, 0, REQUESTLEN);
+						snprintf(request, REQUESTLEN, "%d", errnocopy);
+						EXIT_IF_EQ(err, -1, writen((long) fd_ready, (void*) request,
+									ERRNOLEN), writen);
+						break;
+				}
+				// send number of successfully read files
+				memset(msg_size, 0, SIZELEN);
+				snprintf(msg_size, SIZELEN, "%lu", LinkedList_GetNumberOfElements(read_files));
+				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) msg_size, SIZELEN), writen);
+				// send read files if any
+				while (LinkedList_GetNumberOfElements(read_files) != 0)
+				{
+					errno = 0;
+					read_file_size = LinkedList_PopFront(read_files, &read_file_name,
+								(void**) &read_file_content);
+					if (read_file_size == 0 && errno == ENOMEM) exit(1);
+					memset(request, 0, REQUESTLEN);
+					snprintf(request, REQUESTLEN, "%s", read_file_name); // should error handle this
+					// send file's name
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, REQUESTLEN), writen);
+					// send file's contents size
+					memset(msg_size, 0, SIZELEN);
+					snprintf(msg_size, SIZELEN, "%lu", read_file_size);
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) msg_size, SIZELEN), writen);
+					// send actual contents
+					EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*)
+								read_file_content, read_file_size), writen);
+					free(read_file_name); read_file_name = NULL;
+					free(read_file_content); read_file_content = NULL;
+				}
+				LinkedList_Free(read_files); read_files = NULL;
+				if (err == OP_FATAL) exit(1);
 				REQUEST_DONE;
 				break;
 

@@ -466,6 +466,88 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 }
 
 int
+Storage_readNFiles(storage_t* storage, linked_list_t** read_files, size_t n, int client)
+{
+	if (!storage || !read_files)
+	{
+		errno = EINVAL;
+		return OP_FAILURE;
+	}
+
+	int err;
+	char str_client[BUFFERLEN]; // used to denote client as a string
+	stored_file_t* file = NULL;
+	linked_list_t* names = NULL; // list of file names in storage
+	linked_list_t* tmp = NULL;
+	snprintf(str_client, BUFFERLEN, "%d", client); // convert int client to string
+	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(storage->lock));
+	fprintf(stderr, "[%s:%d] ReadLock acquired over storage.\n", __FILE__, __LINE__);
+
+	if (storage->files_no == 0) // storage is empty
+	{
+		*read_files = NULL;
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+		return OP_SUCCESS;
+	}
+	// storage is not empty
+	RETURN_FATAL_IF_EQ(names, NULL, LinkedList_CopyAllKeys(storage->sorted_files));
+	int readfiles_no = 0;
+	int attempts = 0;
+	bool read_all = ((n == 0) || (n >= storage->files_no));
+	RETURN_FATAL_IF_EQ(tmp, NULL, LinkedList_Init(NULL));
+	while (1)
+	{
+		// if n files have been read and n is not 0
+		// or
+		// every file in storage has been read (successfully or not)
+		if ((readfiles_no == n && !read_all) || (read_all && attempts == storage->files_no)) break;
+		char* pathname = NULL;
+		RETURN_FATAL_IF_EQ(err, -1, LinkedList_PopFront(names, &pathname, NULL));
+		RETURN_FATAL_IF_EQ(file, NULL, (stored_file_t*)
+					HashTable_GetPointerToData(storage->files, (void*) pathname));
+		RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadLock(file->rwlock));
+		fprintf(stderr, "[%s:%d] ReadLock acquired over file.\n", __FILE__, __LINE__);
+		// a client already owns this file's lock
+		if (file->lock_owner != 0 && file->lock_owner != client)
+		{
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
+			free(pathname);
+			attempts++;
+			continue;
+		}
+		// readNFiles shall work on files yet to be opened by client
+		// as doing this any other way would kill its purpose// file is empty
+		if (file->contents_size == 0 || !file->contents)
+		{
+			RETURN_FATAL_IF_NEQ(err, 0, LinkedList_PushBack(tmp, pathname,
+						strlen(pathname) + 1, NULL, 0));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
+			free(pathname);
+			readfiles_no++;
+			attempts++;
+			continue;
+		}
+		else
+		{
+			RETURN_FATAL_IF_NEQ(err, 0, LinkedList_PushBack(tmp, pathname,
+						strlen(pathname) + 1, file->contents, file->contents_size + 1));
+			RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(file->rwlock));
+			fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
+			free(pathname);
+			readfiles_no++;
+			attempts++;
+			continue;
+		}
+	}
+	LinkedList_Free(names);
+	*read_files = tmp;
+	RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
+	return OP_SUCCESS;
+}
+
+int
 Storage_writeFile(storage_t* storage, const char* pathname, size_t length,
 			 const char* contents, linked_list_t** evicted, int client)
 {
