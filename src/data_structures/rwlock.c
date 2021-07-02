@@ -10,7 +10,6 @@
 #include <rwlock.h>
 #include <wrappers.h>
 
-#ifndef DEBUG
 struct _rwlock
 {
 	pthread_mutex_t mutex; // mutex is used to control access to struct
@@ -18,7 +17,6 @@ struct _rwlock
 	unsigned int readers; // number of readers
 	bool pending_writer; // toggled on when there is a writer waiting
 };
-#endif
 
 rwlock_t*
 RWLock_Init()

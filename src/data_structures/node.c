@@ -8,7 +8,6 @@
 #include <string.h>
 #include <wrappers.h>
 
-#ifndef DEBUG
 struct _node
 {
 	char* key; // node's key
@@ -18,7 +17,6 @@ struct _node
 	struct _node* next; // pointer to next element
 	void (*free_data) (void*); // pointer to function used to free data
 };
-#endif
 
 node_t*
 Node_Create(const char* key, size_t key_size, const void* data,

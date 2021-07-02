@@ -12,7 +12,6 @@
 #include <linked_list.h>
 
 
-#ifndef DEBUG
 struct _linked_list
 {
 	node_t* first; // pointer to first element in list
@@ -20,7 +19,6 @@ struct _linked_list
 	unsigned long nelems; // number of elements in list
 	void (*free_data) (void*); // pointer to function used to free nodes' data
 };
-#endif
 
 linked_list_t*
 LinkedList_Init(void (*free_data) (void*))
@@ -298,13 +296,9 @@ LinkedList_Print(const linked_list_t* list)
 	char* key = NULL;
 	while (1)
 	{
-		if (curr == NULL)
-		{
-			fprintf(stdout, "NULL\n");
-			break;
-		}
+		if (curr == NULL) break;
 		if (Node_CopyKey(curr, &key) != 0) fprintf(stdout, "NULL -> ");
-		else fprintf(stdout, "%s -> ", key);
+		else fprintf(stdout, "\t%s\n", key);
 		curr = Node_GetNext(curr);
 		free(key);
 	}

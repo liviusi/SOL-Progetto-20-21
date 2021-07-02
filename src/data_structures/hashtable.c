@@ -11,7 +11,6 @@
 #include <hashtable.h>
 #include <linked_list.h>
 
-#ifndef DEBUG
 struct _hashtable
 {
 	size_t buckets_no; // number of buckets
@@ -20,7 +19,6 @@ struct _hashtable
 	int (*hash_compare) (const void*, const void*); // pointer to key comparison function
 	void (*free_data) (void*); // pointer to data freeing function
 };
-#endif
 
 /**
  * @brief Polynomial rolling hash function.
