@@ -52,7 +52,7 @@ build/client -p -t 200 -f socket.sk -w src -D test1/victims
 # read every file inside server, send to directory ./read-files, unlock a file
 build/client -p -t 200 -f socket.sk -R 0 -d test1/read-files -u ${config_file}
 # write a file inside storage, lock it, delete a file
-build/client -p -t 200 -f socket.sk -W ${server_file} -l ${server_file} -c ${server_file}
+build/client -p -t 200 -f socket.sk -W ${server_file} -l ${server_file} -r ${config_file},${server_file} -c ${server_file}
 
 echo -e "${GREEN}Terminating server with SIGHUP${RESET_COLOR}"
 kill -s SIGHUP $SERVER_PID
