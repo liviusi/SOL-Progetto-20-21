@@ -101,5 +101,10 @@ echo -e "${GREEN}STORAGE${RESET_COLOR} DATA"
 # get current online clients, take only the number from the string, remove trailing dot, sort, take first element
 MAXCLIENTS=$(grep "Current online clients : " $LOG_FILE | grep -oE '[^ ]+$' | sed -e 's/\.//g' | sort -g -r | head -1)
 EVICTIONS=$(grep -E "Victims : [1-9+]" $LOG_FILE | grep -oE '[^ ]+$' | sed -e 's/\.//g' | wc -l)
+MAXSIZE_BYTES=$(grep "Maximum size" $LOG_FILE | grep -oE '[^ ]+$' | sed -e 's/\.//g')
+MAXSIZE_MBYTES=$(echo "scale=3; ${MAXSIZE_BYTES} * 0.000001" | bc -l)
+MAXFILES=$(grep "Maximum file" $LOG_FILE | grep -oE '[^ ]+$' | sed -e 's/\.//g')
 echo -e "\tMaximum online clients : ${MAXCLIENTS}."
 echo -e "\tReplacement algorithm got triggered : ${EVICTIONS} time(s)."
+echo -e "\tMaximum reached size : ${MAXSIZE_MBYTES} [MB]."
+echo -e "\tMaximum files stored : ${MAXFILES}."

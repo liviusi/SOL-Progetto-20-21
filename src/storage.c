@@ -21,7 +21,6 @@
 
 
 #define BUFFERLEN 256
-#define MBYTE 0.000001f
 
 typedef struct _stored_file
 {
@@ -1087,6 +1086,28 @@ Storage_removeFile(storage_t* storage, const char* pathname, int client)
 		return OP_FAILURE;
 	}
 	return OP_SUCCESS;
+}
+
+size_t
+Storage_GetReachedFiles(const storage_t* storage)
+{
+	if (!storage)
+	{
+		errno = EINVAL;
+		return 0;
+	}
+	return storage->reached_files_no;
+}
+
+size_t
+Storage_GetReachedSize(const storage_t* storage)
+{
+	if (!storage)
+	{
+		errno = EINVAL;
+		return 0;
+	}
+	return storage->reached_storage_size;
 }
 
 void

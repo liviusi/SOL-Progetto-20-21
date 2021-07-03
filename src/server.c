@@ -235,7 +235,7 @@ main(int argc, char* argv[])
 						LOG_EVENT("New client accepted : %d.\n", fd_new_client);
 						FD_SET(fd_new_client, &master_read_set);
 						online_clients++;
-						LOG_EVENT("Current online clients : %lu\n", online_clients);
+						LOG_EVENT("Current online clients : %lu.\n", online_clients);
 						fd_num = MAX(fd_new_client, fd_num);
 					}
 				}
@@ -263,6 +263,8 @@ main(int argc, char* argv[])
 			pthread_join(workers[i], NULL);
 		ServerConfig_Free(config);
 		Storage_Print(storage);
+		LOG_EVENT("Maximum size reached : %5f.\n", Storage_GetReachedSize(storage) * MBYTE);
+		LOG_EVENT("Maximum file number : %lu.\n", Storage_GetReachedFiles(storage));
 		Storage_Free(storage);
 		BoundedBuffer_Free(tasks);
 		unlink(sockname);
@@ -805,7 +807,7 @@ worker_routine(void* arg)
 				memset(pipe_buffer, 0, PIPEBUFFERLEN);
 				snprintf(pipe_buffer, PIPEBUFFERLEN, "%d", TERMINATE_WORKER);
 				EXIT_IF_EQ(err, -1, writen((long) pipe_output_channel, (void*) pipe_buffer, PIPEBUFFERLEN), writen);
-				LOG_EVENT("Client left %d\n", fd_ready);
+				LOG_EVENT("Client left %d.\n", fd_ready);
 				break;
 		}
 		free(fd_ready_string);

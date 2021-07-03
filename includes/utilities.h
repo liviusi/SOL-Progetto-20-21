@@ -6,6 +6,8 @@
 #ifndef _UTILITIES_H_
 #define _UTILITIES_H_
 
+#define MBYTE 0.000001f
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>

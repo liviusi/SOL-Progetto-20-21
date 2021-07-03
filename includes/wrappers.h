@@ -4,6 +4,8 @@
 #include <server_defines.h>
 #include <stdarg.h>
 
+#define MBYTE 0.000001f
+
 /**
  * @brief Returns fatal error if called function output value is not equal to expected value.
  * @param variable will be set to function_call output value

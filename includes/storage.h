@@ -193,6 +193,12 @@ Storage_closeFile(storage_t* storage, const char* pathname, int client);
 int
 Storage_removeFile(storage_t* storage, const char* pathname, int client);
 
+size_t
+Storage_GetReachedFiles(const storage_t* storage);
+
+size_t
+Storage_GetReachedSize(const storage_t* storage);
+
 /**
  * Utility print function.
 */
