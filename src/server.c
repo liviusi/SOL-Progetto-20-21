@@ -513,8 +513,8 @@ worker_routine(void* arg)
 				// send return value
 				memset(request, 0, REQUESTLEN);
 				snprintf(request, REQUESTLEN, "%d", err);
-				LOG_EVENT("[%d] writeFile %s [%lu] : %d.\n\tVictims : %lu.\n", (int) pthread_self(), pathname, write_size,
-							err, LinkedList_GetNumberOfElements(evicted));
+				LOG_EVENT("[%d] writeFile %s : %d -> %lu.\n\tVictims : %lu.\n", (int) pthread_self(), pathname, err,
+							write_size, LinkedList_GetNumberOfElements(evicted));
 				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, strlen(request) + 1), writen);
 				switch (err)
 				{
@@ -586,8 +586,8 @@ worker_routine(void* arg)
 				// send return value
 				memset(request, 0, REQUESTLEN);
 				snprintf(request, REQUESTLEN, "%d", err);
-				LOG_EVENT("[%d] appendToFile %s : %d.\n\tVictims : %lu.\n", (int) pthread_self(), pathname,
-							err, LinkedList_GetNumberOfElements(evicted));
+				LOG_EVENT("[%d] appendToFile %s : %d -> %lu.\n\tVictims : %lu.\n", (int) pthread_self(), pathname,
+							err, append_size, LinkedList_GetNumberOfElements(evicted));
 				EXIT_IF_EQ(tmp_err, -1, writen((long) fd_ready, (void*) request, strlen(request) + 1), writen);
 				switch (err)
 				{
