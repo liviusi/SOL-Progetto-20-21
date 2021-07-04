@@ -37,8 +37,8 @@ typedef struct _stored_file
 	rwlock_t* rwlock; // used for multithreading purposes
 
 	// used for replacement algorithms
-	time_t last_modified;
-	size_t used_times;
+	time_t last_used;
+	int frequency;
 } stored_file_t;
 
 /**
@@ -90,8 +90,8 @@ StoredFile_Init(const char* name, const void* contents, size_t contents_size)
 	tmp->called_open = tmp_called_open;
 	tmp->potential_writer = 0;
 	tmp->rwlock = tmp_lock;
-	tmp->used_times = 0;
-	tmp->last_modified = time(NULL);
+	tmp->frequency = 0;
+	tmp->last_used = time(NULL);
 
 	return tmp;
 
@@ -153,6 +153,29 @@ StoredFile_Free(void* arg)
 	free(file->name);
 	free(file->contents);
 	free(file);
+}
+
+typedef struct usage
+{
+	char* name;
+	time_t last_used;
+	int frequency;
+} usage_t;
+
+int
+compare_usage_time(const void* a, const void* b)
+{
+	usage_t _a = *(usage_t*) a;
+	usage_t _b = *(usage_t*) b;
+	return difftime(_a.last_used, _b.last_used);
+}
+
+int
+compare_frequency(const void* a, const void* b)
+{
+	usage_t _a = *(usage_t*) a;
+	usage_t _b = *(usage_t*) b;
+	return (_a.frequency - _b.frequency);
 }
 
 struct _storage
@@ -237,24 +260,98 @@ Storage_getVictim(storage_t* storage, char** victim_name)
 		errno = EINVAL;
 		return -1;
 	}
-	size_t res;
+	int errnocopy;
+	size_t i = 0, j = 0;
+	usage_t* stats = NULL;
+	linked_list_t* copy = NULL;
+	const stored_file_t* tmp = NULL;
+	char* name = NULL;
+	char* victim = NULL;
 	switch (storage->algorithm)
 	{
 		case FIFO:
 			errno = 0;
-			res = LinkedList_PopBack(storage->names, victim_name, NULL);
-			if (res == 0 && errno == ENOMEM) return -1;
-			break;
+			i = LinkedList_PopBack(storage->names, victim_name, NULL);
+			if (i == 0 && errno == ENOMEM) return -1;
+			return 0;
 
 		case LFU:
 			// sort files by usage frequency
-			break;
+			stats = (usage_t*) malloc(sizeof(usage_t) * storage->files_no);
+			if (!stats) goto failure;
+			copy = LinkedList_CopyAllKeys(storage->names);
+			if (!copy) goto failure;
+			while (LinkedList_GetNumberOfElements(copy) != 0)
+			{
+				errno = 0;
+				if (LinkedList_PopFront(copy, &name, NULL) == 0 && errno == ENOMEM) goto failure;
+				stats[i].name = (char*) malloc(sizeof(char) * (strlen(name) + 1));
+				if (!stats[i].name) goto failure;
+				strcpy(stats[i].name, name);
+				tmp = (const stored_file_t*) HashTable_GetPointerToData(storage->files, name);
+				if (!tmp) goto failure;
+				stats[i].last_used = tmp->last_used;
+				stats[i].frequency = tmp->frequency;
+				i++;
+				free(name);
+			}
+			qsort((void*) stats, i, sizeof(usage_t), compare_frequency);
+			while (j != i) { fprintf(stderr, "%s - %d\n", stats[j].name, stats[j].frequency); j++; }
+			victim = (char*) malloc(sizeof(char) * (strlen(stats[0].name) + 1));
+			if (!victim) goto failure;
+			strcpy(victim, stats[0].name);
+			// remove victim from names
+			LinkedList_Remove(storage->names, victim);
+			*victim_name = victim; j = 0;
+			while (j != i) { free(stats[j].name); j++; }
+			free(stats);
+			LinkedList_Free(copy);
+			return 0;
 
 		case LRU:
 			// sort files by last usage time
-			break;
+			stats = (usage_t*) malloc(sizeof(usage_t) * storage->files_no);
+			if (!stats) goto failure;
+			copy = LinkedList_CopyAllKeys(storage->names);
+			if (!copy) goto failure;
+			while (LinkedList_GetNumberOfElements(copy) != 0)
+			{
+				errno = 0;
+				if (LinkedList_PopFront(copy, &name, NULL) == 0 && errno == ENOMEM) goto failure;
+				stats[i].name = (char*) malloc(sizeof(char) * (strlen(name) + 1));
+				if (!stats[i].name) goto failure;
+				strcpy(stats[i].name, name);
+				tmp = (const stored_file_t*) HashTable_GetPointerToData(storage->files, name);
+				if (!tmp) goto failure;
+				stats[i].last_used = tmp->last_used;
+				stats[i].frequency = tmp->frequency;
+				i++;
+				free(name);
+			}
+			qsort((void*) stats, i, sizeof(usage_t), compare_usage_time);
+			while (j != i) { fprintf(stderr, "%s - %ld\n", stats[j].name, stats[j].last_used); j++; }
+			victim = (char*) malloc(sizeof(char) * (strlen(stats[0].name) + 1));
+			if (!victim) goto failure;
+			strcpy(victim, stats[0].name);
+			// remove victim from names
+			LinkedList_Remove(storage->names, victim);
+			*victim_name = victim; j = 0;
+			while (j != i) { free(stats[j].name); j++; }
+			free(stats);
+			LinkedList_Free(copy);
+			return 0;
 	}
-	return 0;
+	return -1;
+
+	failure:
+		errnocopy = errno;
+		j = 0;
+		while (j != i) { free(stats[j].name); j++; }
+		free(stats);
+		LinkedList_Free(copy);
+		free(name);
+		errno = errnocopy;
+		return -1;
 }
 
 int
@@ -312,11 +409,7 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 						len+1, NULL, 0));
 			RETURN_FATAL_IF_EQ(err, -1, HashTable_Insert(storage->files, (void*) pathname,
 						strlen(pathname) + 1, (void*) file, sizeof(*file)));
-			if (storage->algorithm == FIFO)
-			{
-				RETURN_FATAL_IF_EQ(err, -1, LinkedList_PushFront(storage->names, 
-						pathname, strlen(pathname) + 1, NULL, 0));
-			}
+			RETURN_FATAL_IF_EQ(err, -1, LinkedList_PushFront(storage->names, pathname, strlen(pathname) + 1, NULL, 0));
 			// file has been copied inside storage
 			// it is to be freed
 			free(file);
@@ -381,8 +474,8 @@ Storage_openFile(storage_t* storage, const char* pathname, int flags, int client
 			RETURN_FATAL_IF_NEQ(err, 0 , LinkedList_PushFront(file->called_open,
 						str_client, len+1, NULL, 0));
 			// edit file usage params
-			file->last_modified = time(NULL);
-			file->used_times++;
+			file->last_used = time(NULL);
+			file->frequency++;
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 			// fprintf(stderr, "[%s:%d] WriteLock released over file.\n", __FILE__, __LINE__);
 
@@ -467,8 +560,8 @@ Storage_readFile(storage_t* storage, const char* pathname, void** buf, size_t* s
 
 				file->potential_writer = 0; // writing this file is not allowed
 				// edit file usage params
-				file->last_modified = time(NULL);
-				file->used_times++;
+				file->last_used = time(NULL);
+				file->frequency++;
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 				// fprintf(stderr, "[%s:%d] WriteLock released over file.\n", __FILE__, __LINE__);
 				RETURN_FATAL_IF_NEQ(err, 0, RWLock_ReadUnlock(storage->lock));
@@ -551,8 +644,8 @@ Storage_readNFiles(storage_t* storage, linked_list_t** read_files, size_t n, int
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
 			file->potential_writer = 0;
 			// edit file usage params
-			file->last_modified = time(NULL);
-			file->used_times++;
+			file->last_used = time(NULL);
+			file->frequency++;
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 			// fprintf(stderr, "[%s:%d] ReadLock released over file.\n", __FILE__, __LINE__);
 			free(pathname);
@@ -568,8 +661,8 @@ Storage_readNFiles(storage_t* storage, linked_list_t** read_files, size_t n, int
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteLock(file->rwlock));
 			file->potential_writer = 0;
 			// edit file usage params
-			file->last_modified = time(NULL);
-			file->used_times++;
+			file->last_used = time(NULL);
+			file->frequency++;
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 			free(pathname);
 			readfiles_no++;
@@ -882,8 +975,8 @@ Storage_lockFile(storage_t* storage, const char* pathname, int client)
 			file->lock_owner = client;
 			file->potential_writer = 0;
 			// edit file usage params
-			file->last_modified = time(NULL);
-			file->used_times++;
+			file->last_used = time(NULL);
+			file->frequency++;
 
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 			// fprintf(stderr, "[%s:%d] WriteLock released over file.\n", __FILE__, __LINE__);
@@ -963,8 +1056,8 @@ Storage_unlockFile(storage_t* storage, const char* pathname, int client)
 			file->lock_owner = 0;
 			file->potential_writer = 0;
 			// edit file usage params
-			file->last_modified = time(NULL);
-			file->used_times++;
+			file->last_used = time(NULL);
+			file->frequency++;
 
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 			// fprintf(stderr, "[%s:%d] WriteLock released over file.\n", __FILE__, __LINE__);
@@ -1055,8 +1148,8 @@ Storage_closeFile(storage_t* storage, const char* pathname, int client)
 			file->potential_writer = 0;
 			file->potential_writer = 0;
 			// edit file usage params
-			file->last_modified = time(NULL);
-			file->used_times++;
+			file->last_used = time(NULL);
+			file->frequency++;
 			RETURN_FATAL_IF_NEQ(err, 0, RWLock_WriteUnlock(file->rwlock));
 			// fprintf(stderr, "[%s:%d] WriteLock released over file.\n", __FILE__, __LINE__);
 

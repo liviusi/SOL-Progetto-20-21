@@ -74,6 +74,6 @@ test2: client server
 .PHONY: clean cleanall all dummies
 all: $(TARGETS)
 clean cleanall:
-	rm -rf $(BUILD_DIR)/* $(OBJ_DIR)/* logs/*.log test1 test2
+	rm -rf $(BUILD_DIR)/* $(OBJ_DIR)/* logs/*.log *.sk test1 test2 dummies* *.txt
 	@touch $(BUILD_DIR)/.keep
 	@touch $(OBJ_DIR)/.keep

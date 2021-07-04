@@ -146,6 +146,7 @@ ServerConfig_Set(server_config_t* config, const char* config_file_path)
 		config->storage_size = 0;
 		memset(config->socket_path, 0, MAXPATH);
 		memset(config->log_path, 0, MAXPATH);
+		fclose(config_file);
 		errno = EINVAL;
 		return -1;
 }

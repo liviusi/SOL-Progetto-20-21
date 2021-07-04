@@ -40,13 +40,13 @@ sleep 5s
 
 echo -e "${GREEN}Running some clients${RESET_COLOR}"
 # connect, send files, victims go to test2/victims1/
-build/client -p -f socket.sk -w dummies1 -D test2/victims
+build/client -p -t 10 -f socket.sk -w dummies1 -D test2/victims
 # connect, send files, victims go to test2/victims2/
-build/client -p -f socket.sk -w dummies2 -D test2/victims
+build/client -p -t 10 -f socket.sk -w dummies2 -D test2/victims
 # connect, send files, victims go to test2/victims2/
-build/client -p -f socket.sk -w dummies3 -D test2/victims
+build/client -p -t 10 -f socket.sk -w dummies3 -D test2/victims
 
-echo -e "${GREEN}Killing server${RESET_COLOR}"
+echo -e "${GREEN}Terminating server with SIGHUP${RESET_COLOR}"
 kill -s SIGHUP $SERVER_PID
 
 wait $SERVER_PID
