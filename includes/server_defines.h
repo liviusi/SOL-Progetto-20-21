@@ -11,7 +11,7 @@
 
 #define O_CREATE 1
 #define O_LOCK 2
-#define IS_O_CREATE_SET(mask) mask & 1
+#define IS_O_CREATE_SET(mask) (mask & 1)
 #define IS_O_LOCK_SET(mask) ((mask >> 1) & 1)
 
 #define OP_SUCCESS 0

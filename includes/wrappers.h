@@ -1,8 +1,10 @@
 #ifndef _WRAPPERS_H_
 #define _WRAPPERS_H_
 
-#include <server_defines.h>
+#include <errno.h>
 #include <stdarg.h>
+
+#include <server_defines.h>
 
 #define MBYTE 0.000001f
 
@@ -13,7 +15,7 @@
  * @param function_call actual function call
 */
 #define RETURN_FATAL_IF_NEQ(variable, expected_value, function_call) \
-	if ((variable = function_call) != expected_value) {fprintf(stderr, "[%s:%d] Fatal error occurred.", __FILE__, __LINE__); return OP_FATAL; }
+	if ((variable = function_call) != expected_value) { fprintf(stderr, "[%s:%d] Fatal error occurred. errno = %d\n", __FILE__, __LINE__, errno); return OP_FATAL; }
 
 /**
  * @brief Returns fatal error if called function output value is equal to expected value.
@@ -22,7 +24,7 @@
  * @param function_call actual function call
 */
 #define RETURN_FATAL_IF_EQ(variable, expected_value, function_call) \
-	if ((variable = function_call) == expected_value) {fprintf(stderr, "[%s:%d] Fatal error occurred.", __FILE__, __LINE__); return OP_FATAL; }
+	if ((variable = function_call) == expected_value) { fprintf(stderr, "[%s:%d] Fatal error occurred. errno = %d\n", __FILE__, __LINE__, errno); return OP_FATAL; }
 
 /**
  * @brief Exits with EXIT_FAILURE if called function output value is not equal to expected value.

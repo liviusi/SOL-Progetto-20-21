@@ -12,7 +12,9 @@
 
 typedef enum _replacement_algo
 {
-	FIFO
+	FIFO,
+	LRU,
+	LFU
 } replacement_algo_t;
 
 
