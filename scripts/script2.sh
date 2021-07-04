@@ -3,7 +3,7 @@
 GREEN="\033[0;32m"
 RESET_COLOR="\033[0m"
 # starting
-echo -e "${GREEN}Test 2${RESET_COLOR}"
+echo -e "${GREEN}TEST 2${RESET_COLOR}"
 
 echo -e "${GREEN}Creating dummy files${RESET_COLOR}"
 mkdir dummies1
@@ -31,25 +31,81 @@ cp -r dummies1 dummies2
 cp -r dummies2 dummies3
 
 # booting the server
-echo -e "${GREEN}Booting the server${RESET_COLOR}"
+echo -e "${GREEN}[FIFO] Booting the server${RESET_COLOR}"
 valgrind --leak-check=full build/server ./config2.txt &
 # server pid
 SERVER_PID=$!
 export SERVER_PID
 sleep 5s
 
-echo -e "${GREEN}Running some clients${RESET_COLOR}"
-# connect, send files, victims go to test2/victims1/
-build/client -p -t 10 -f socket.sk -w dummies1 -D test2/victims
-# connect, send files, victims go to test2/victims2/
-build/client -p -t 10 -f socket.sk -w dummies2 -D test2/victims
-# connect, send files, victims go to test2/victims2/
-build/client -p -t 10 -f socket.sk -w dummies3 -D test2/victims
+echo -e "${GREEN}[FIFO] Running some clients${RESET_COLOR}"
+# connect, send files, save victims if any
+build/client -p -t 10 -f socket.sk -w dummies1 -D test2/FIFO/victims1
+# connect, send files, save victims if any
+build/client -p -t 10 -f socket.sk -w dummies2 -D test2/FIFO/victims2
+# connect, send files, save victims if any
+build/client -p -t 10 -f socket.sk -w dummies3 -D test2/FIFO/victims3
 
-echo -e "${GREEN}Terminating server with SIGHUP${RESET_COLOR}"
+echo -e "${GREEN}[FIFO] Terminating server with SIGHUP${RESET_COLOR}"
 kill -s SIGHUP $SERVER_PID
-
 wait $SERVER_PID
-echo -e "${GREEN}Test completed${RESET_COLOR}"
+echo -e "${GREEN}[FIFO] Test completed${RESET_COLOR}"
+
+# replace 0 with 1 in config2.txt => use LRU replacement policy
+sed -i '$s/0/1/' config2.txt
+# change log file name
+sed -i -e 's/FIFO2.log/LRU2.log/g' config2.txt
+
+echo -e "${GREEN}[LRU] Booting the server${RESET_COLOR}"
+
+valgrind --leak-check=full build/server ./config2.txt &
+# server pid
+SERVER_PID=$!
+export SERVER_PID
+
+sleep 5s
+
+echo -e "${GREEN}[LRU] Running some clients${RESET_COLOR}"
+# connect, send files, save victims if any
+build/client -p -t 10 -f socket.sk -w dummies1 -D test2/LRU/victims1
+# connect, send files, save victims if any
+build/client -p -t 10 -f socket.sk -w dummies2 -D test2/LRU/victims2
+# connect, send files, save victims if any
+build/client -p -t 10 -f socket.sk -w dummies3 -D test2/LRU/victims3
+
+echo -e "${GREEN}[LRU] Terminating server with SIGHUP${RESET_COLOR}"
+kill -s SIGHUP $SERVER_PID
+wait $SERVER_PID
+echo -e "${GREEN}[LRU] Test completed${RESET_COLOR}"
+
+# replace 1 with 2 in config2.txt => use LFU replacement policy
+sed -i '$s/1/2/' config2.txt
+# change log file name
+sed -i -e 's/LRU2.log/LFU2.log/g' config2.txt
+
+echo -e "${GREEN}[LFU] Booting the server${RESET_COLOR}"
+
+valgrind --leak-check=full build/server ./config2.txt &
+# server pid
+SERVER_PID=$!
+export SERVER_PID
+
+sleep 5s
+
+echo -e "${GREEN}[LFU] Running some clients${RESET_COLOR}"
+# connect, send files, save victims if any
+build/client -p -t 10 -f socket.sk -w dummies1 -D test2/LFU/victims1
+# connect, send files, save victims if any
+build/client -p -t 10 -f socket.sk -w dummies2 -D test2/LFU/victims2
+# connect, send files, save victims if any
+build/client -p -t 10 -f socket.sk -w dummies3 -D test2/LFU/victims3
+
+echo -e "${GREEN}[LFU] Terminating server with SIGHUP${RESET_COLOR}"
+kill -s SIGHUP $SERVER_PID
+wait $SERVER_PID
+echo -e "${GREEN}[LFU] Test completed${RESET_COLOR}"
+echo -e "${GREEN}TEST COMPLETED${RESET_COLOR}"
+
 rm config2.txt
 rm -r dummies1 dummies2 dummies3
+exit 0
