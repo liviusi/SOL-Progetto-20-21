@@ -38,4 +38,11 @@ typedef enum opcodes
 	TERMINATE
 } opcodes_t;
 
+typedef enum _replacement_policy
+{
+	FIFO,
+	LRU,
+	LFU
+} replacement_policy_t;
+
 #endif

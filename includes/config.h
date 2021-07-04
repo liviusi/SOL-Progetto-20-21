@@ -8,6 +8,8 @@
 
 #include <stdlib.h>
 
+#include <server_defines.h>
+
 // Struct fields are not exposed to forbid user from editing them
 typedef struct _server_config server_config_t;
 
@@ -85,6 +87,9 @@ ServerConfig_GetLogFilePath(const server_config_t* config, char** log_path_ptr);
 */
 unsigned long
 ServerConfig_GetSocketFilePath(const server_config_t* config, char** socket_path_ptr);
+
+replacement_policy_t
+ServerConfig_GetReplacementPolicy(const server_config_t* config);
 
 /**
  * Frees allocated resources.

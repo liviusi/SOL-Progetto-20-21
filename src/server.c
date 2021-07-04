@@ -129,7 +129,8 @@ main(int argc, char* argv[])
 
 	// initialize server storage
 	EXIT_IF_EQ(storage, NULL, Storage_Init((size_t) ServerConfig_GetMaxFilesNo(config),
-				(size_t) ServerConfig_GetStorageSize(config), FIFO), Storage_Init);
+				(size_t) ServerConfig_GetStorageSize(config), ServerConfig_GetReplacementPolicy(config)),
+				Storage_Init);
 	
 	// initialize tasks' bounded buffer
 	EXIT_IF_EQ(tasks, NULL, BoundedBuffer_Init(MAXTASKS), BoundedBuffer_Init);

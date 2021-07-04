@@ -14,13 +14,14 @@
 #include <server_defines.h>
 
 
-#define PARAMS 5
+#define PARAMS 6
 #define BUFFERLEN 256
 #define WORKERSNO "NUMBER OF THREAD WORKERS = "
 #define MAXFILESNO "MAXIMUM NUMBER OF STORABLE FILES = "
 #define STORAGESIZE "MAXIMUM STORAGE SIZE = "
 #define SOCKETPATH "SOCKET FILE PATH = "
 #define LOGPATH "LOG FILE PATH = "
+#define CHOSENPOLICY "REPLACEMENT POLICY = "
 
 struct _server_config
 {
@@ -30,6 +31,7 @@ struct _server_config
 		storage_size; // maximum storage size
 	char socket_path[MAXPATH]; // absolute path to socket file
 	char log_path[MAXPATH]; // absolute path to log file
+	replacement_policy_t policy;
 };
 
 server_config_t* ServerConfig_Init()
@@ -61,7 +63,7 @@ ServerConfig_Set(server_config_t* config, const char* config_file_path)
 	char* dummy;
 	bool
 		flag_workers = false, flag_max = false, flag_storage = false,
-		flag_socket = false, flag_log = false;
+		flag_socket = false, flag_log = false, flag_policy = false;
 	unsigned long tmp;
 	while (i < PARAMS)
 	{
@@ -135,6 +137,19 @@ ServerConfig_Set(server_config_t* config, const char* config_file_path)
 			config->log_path[strcspn(config->log_path, "\n")] = '\0';
 			i++;
 			continue;
+		}
+		if (strncmp(buffer, CHOSENPOLICY, strlen(CHOSENPOLICY)) == 0)
+		{
+			if (!flag_policy) flag_policy = true;
+			else goto invalid_config;
+			tmp = strtoul(buffer + strlen(CHOSENPOLICY), NULL, 10);
+			if (tmp <= 2) 
+			{
+				config->policy = tmp;
+				i++;
+				continue;
+			}
+			else goto invalid_config;
 		}
 	}
 	if (fclose(config_file) != 0) return -1;
@@ -221,6 +236,17 @@ ServerConfig_GetSocketFilePath(const server_config_t* config, char** socket_path
 	strncpy(tmp, config->socket_path, MAXPATH);
 	*socket_path_ptr = tmp;
 	return strlen(tmp);
+}
+
+replacement_policy_t
+ServerConfig_GetReplacementPolicy(const server_config_t* config)
+{
+	if (!config)
+	{
+		errno = EINVAL;
+		return 0;
+	}
+	return config->policy;
 }
 
 void

@@ -181,7 +181,7 @@ compare_frequency(const void* a, const void* b)
 struct _storage
 {
 	hashtable_t* files; // table of files in storage
-	replacement_algo_t algorithm; // right now only FIFO is to be supported.
+	replacement_policy_t algorithm; // right now only FIFO is to be supported.
 	linked_list_t* names; // files sorted following replacement policy (sorting) method
 
 	size_t max_files_no; // maximum number of storeable files
@@ -198,7 +198,7 @@ struct _storage
 };
 
 storage_t*
-Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t chosen_algo)
+Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_policy_t chosen_algo)
 {
 	if (max_files_no == 0 || max_storage_size == 0)
 	{

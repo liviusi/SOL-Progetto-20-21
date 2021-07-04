@@ -9,13 +9,7 @@
 #include <stdlib.h>
 
 #include <linked_list.h>
-
-typedef enum _replacement_algo
-{
-	FIFO,
-	LRU,
-	LFU
-} replacement_algo_t;
+#include <server_defines.h>
 
 
 typedef struct _storage storage_t;
@@ -32,7 +26,7 @@ typedef struct _storage storage_t;
  * "HashTable_Init".
 */
 storage_t*
-Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_algo_t chosen_algo);
+Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_policy_t chosen_algo);
 
 /**
  * @brief Handles file opening.

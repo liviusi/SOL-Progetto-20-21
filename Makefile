@@ -62,12 +62,12 @@ server: $(OBJS-SERVER)
 	$(CC) $(CFLAGS) -o $(BUILD_DIR)/server $(OBJS-SERVER) $(LIBS)
 
 test1: client server
-	@echo "NUMBER OF THREAD WORKERS = 1\nMAXIMUM NUMBER OF STORABLE FILES = 10000\nMAXIMUM STORAGE SIZE = 128000000\nSOCKET FILE PATH = $(PWD)/socket.sk\nLOG FILE PATH = $(PWD)/logs/log1.log" > config1.txt
+	@echo "NUMBER OF THREAD WORKERS = 1\nMAXIMUM NUMBER OF STORABLE FILES = 10000\nMAXIMUM STORAGE SIZE = 128000000\nSOCKET FILE PATH = $(PWD)/socket.sk\nLOG FILE PATH = $(PWD)/logs/log1.log\nREPLACEMENT POLICY = 0" > config1.txt
 	@chmod +x scripts/script1.sh
 	scripts/script1.sh
 
 test2: client server
-	@echo "NUMBER OF THREAD WORKERS = 4\nMAXIMUM NUMBER OF STORABLE FILES = 10\nMAXIMUM STORAGE SIZE = 1000000\nSOCKET FILE PATH = $(PWD)/socket.sk\nLOG FILE PATH = $(PWD)/logs/log2.log" > config2.txt
+	@echo "NUMBER OF THREAD WORKERS = 4\nMAXIMUM NUMBER OF STORABLE FILES = 10\nMAXIMUM STORAGE SIZE = 1000000\nSOCKET FILE PATH = $(PWD)/socket.sk\nLOG FILE PATH = $(PWD)/logs/log2.log\nREPLACEMENT POLICY = 0" > config2.txt
 	@chmod +x scripts/script2.sh
 	scripts/script2.sh
 
