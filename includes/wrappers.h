@@ -1,3 +1,8 @@
+/**
+ * @brief Useful macros.
+ * @author Giacomo Trapani.
+*/
+
 #ifndef _WRAPPERS_H_
 #define _WRAPPERS_H_
 

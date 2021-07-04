@@ -11,7 +11,7 @@
 #include <linked_list.h>
 #include <server_defines.h>
 
-
+// Struct fields are not exposed to force callee to access it using the implemented methods.
 typedef struct _storage storage_t;
 
 /**
@@ -20,10 +20,8 @@ typedef struct _storage storage_t;
  * NULL on failure.
  * @param max_files_no cannot be 0.
  * @param max_storage_size cannot be 0.
- * @exception It sets "errno" to "EINVAL" if any param is not valid.
- * The function may also fail and set "errno" for any of the errors
- * specified for the routines "malloc", "RWLock_Init", "LinkedList_Init",
- * "HashTable_Init".
+ * @exception It sets "errno" to "EINVAL" if any param is not valid.  The function may also fail and set "errno"
+ * for any of the errors specified for the routines "malloc", "RWLock_Init", "LinkedList_Init", "HashTable_Init".
 */
 storage_t*
 Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_policy_t chosen_algo);
@@ -33,17 +31,14 @@ Storage_Init(size_t max_files_no, size_t max_storage_size, replacement_policy_t 
  * @returns 0 on success, 1 on failure, 2 on fatal errors.
  * @param storage cannot be NULL.
  * @param pathname cannot be NULL.
- * @exception The function may fail and set "errno" for any of the errors
- * specified for the routines "RWLock_ReadLock", "RWLock_ReadUnlock",
- * "RWLock_WriteLock", "RWLock_WriteUnlock", "LinkedList_PushFront",
- * "LinkedList_Contains", "StoredFile_Init", "HashTable_Find", "HashTable_Insert",
- * "HashTable_GetPointerToData" which are all considered fatal errors.
+ * @exception The function may fail and set "errno" for any of the errors specified for the routines "RWLock_ReadLock",
+ * "RWLock_ReadUnlock", "RWLock_WriteLock", "RWLock_WriteUnlock", "LinkedList_PushFront", "LinkedList_Contains",
+ * "StoredFile_Init", "HashTable_Find", "HashTable_Insert", "HashTable_GetPointerToData" which are all considered fatal errors.
  * Non-fatal failures may happen because:
  *  	- any param is not valid (sets "errno" to "EINVAL");
  *  	- storage is already full (sets "errno" to "ENOSPC");
  *  	- file has already been opened by this client (sets "errno" to "EBADF");
- *  	- another client owns this file's lock and this client
- *  		is trying to acquire it (sets "errno" to "EACCES");
+ *  	- another client owns this file's lock and this client is trying to acquire it (sets "errno" to "EACCES");
  *  	- client is trying to create an already existing file (sets "errno" to "EEXIST").
 */
 int
@@ -151,7 +146,7 @@ Storage_lockFile(storage_t* storage, const char* pathname, int client);
  *  	- any param is not valid (sets "errno" to "EINVAL");
  *  	- client has yet to open this file (sets "errno" to "EACCES");
  *  	- another client owns this file's lock (sets "errno" to "EACCES");
- *   	- file is not inside the storage (sets "errno" to "EBADF").
+ *  	- file is not inside the storage (sets "errno" to "EBADF").
 */
 int
 Storage_unlockFile(storage_t* storage, const char* pathname, int client);
@@ -167,7 +162,7 @@ Storage_unlockFile(storage_t* storage, const char* pathname, int client);
  * Non-fatal failures may happen because:
  *  	- any param is not valid (sets "errno" to "EINVAL");
  *  	- client has yet to open this file (sets "errno" to "EACCES");
- *   	- file is not inside the storage (sets "errno" to "EBADF").
+ *  	- file is not inside the storage (sets "errno" to "EBADF").
 */
 int
 Storage_closeFile(storage_t* storage, const char* pathname, int client);
@@ -183,8 +178,8 @@ Storage_closeFile(storage_t* storage, const char* pathname, int client);
  * Non-fatal failures may happen because:
  *  	- any param is not valid (sets "errno" to "EINVAL");
  *  	- client has yet to open this file (sets "errno" to "EACCES");
- *   	- client has not locked this file (sets "errno" to "EACCES");
- *   	- file is not inside the storage (sets "errno" to "EBADF").
+ *  	- client has not locked this file (sets "errno" to "EACCES");
+ *  	- file is not inside the storage (sets "errno" to "EBADF").
 */
 int
 Storage_removeFile(storage_t* storage, const char* pathname, int client);

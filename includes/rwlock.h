@@ -6,7 +6,7 @@
 #ifndef _RWLOCK_H_
 #define _RWLOCK_H_
 
-// Struct fields are not exposed  force callee to access it using the implemented methods.
+// Struct fields are not exposed to force callee to access it using the implemented methods.
 typedef struct _rwlock rwlock_t;
 
 /**

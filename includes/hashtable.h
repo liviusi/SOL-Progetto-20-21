@@ -68,7 +68,9 @@ HashTable_CopyOutData(const hashtable_t* table, const void* key, void** dataptr)
  * @returns Pointer to data on success (which may be NULL), NULL on failure.
  * @param table cannot be NULL.
  * @param key cannot be NULL.
- * @exception It sets "errno" to "EINVAL" if any param is not valid.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid; if the function fails because given key does
+ * not belong to the set of those inside the table, "errno" is set to "ENOENT". The function may also fail and set "errno"
+ * for any of the errors specified for the routine "Node_CopyKey".
 */
 const void*
 HashTable_GetPointerToData(const hashtable_t* table, const void* key);
