@@ -69,7 +69,7 @@ test1: client server
 test2: client server
 	@echo "NUMBER OF THREAD WORKERS = 4\nMAXIMUM NUMBER OF STORABLE FILES = 10\nMAXIMUM STORAGE SIZE = 1000000\nSOCKET FILE PATH = $(PWD)/socket.sk\nLOG FILE PATH = $(PWD)/logs/log2.log" > config2.txt
 	@chmod +x scripts/script2.sh
-	scripts/scripts2.sh
+	scripts/script2.sh
 
 .PHONY: clean cleanall all dummies
 all: $(TARGETS)
