@@ -9,7 +9,8 @@
 #define MBYTE 0.000001f
 
 /**
- * @brief Returns fatal error if called function output value is not equal to expected value.
+ * @brief Returns fatal error if called function output value is not equal to expected value. It also prints "errno" value
+ * and reports where the error occurred.
  * @param variable will be set to function_call output value
  * @param expected_value value returned by function_call in case of success
  * @param function_call actual function call
@@ -18,7 +19,8 @@
 	if ((variable = function_call) != expected_value) { fprintf(stderr, "[%s:%d] Fatal error occurred. errno = %d\n", __FILE__, __LINE__, errno); return OP_FATAL; }
 
 /**
- * @brief Returns fatal error if called function output value is equal to expected value.
+ * @brief Returns fatal error if called function output value is equal to expected value. It also prints "errno" value
+ * and reports where the error occurred.
  * @param variable will be set to function_call output value
  * @param expected_value value returned by function_call in case of failure
  * @param function_call actual function call
@@ -82,6 +84,9 @@
 #define PRINT_IF(flag, ...) \
 	if (flag) fprintf(stdout, __VA_ARGS__);
 
+/**
+ * @brief Gets maximum value between given params.
+*/
 #define MAX(a, b) ((a >= b) ? (a) : (b))
 
 #endif

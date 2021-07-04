@@ -6,25 +6,20 @@
 #ifndef _NODE_H
 #define _NODE_H
 
-#include <stdlib.h>
 #include <errno.h>
+#include <stdlib.h>
 
-/**
- * Generic node struct used to save data inside doubly-linked-list data structure.
-*/
+// Generic node struct used to save data inside doubly-linked-list data structure.
 typedef struct _node node_t;
 
 /**
- * @brief Allocates memory for a new node and creates it with
- * given key and data.
+ * @brief Allocates memory for a new node and creates it with given key and data.
  * @returns Initialized node struct on success, NULL on failure.
  * @param key cannot be NULL.
  * @param key_size cannot be 0.
- * @param free_data pointer to function used to free node's data.
- * It will be set to free if param is NULL.
- * @exception It sets "errno" to "EINVAL" if any param is not valid.
- * The function may also fail and set "errno" for any of the errors
- * specified for the routine "malloc".
+ * @param free_data pointer to function used to free node's data. It will be set to free if NULL.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid. The function may also fail and set "errno"
+ * for any of the errors specified for the routine "malloc".
 */
 node_t*
 Node_Create(const char* key, size_t key_size, const void* data,
@@ -59,7 +54,7 @@ const node_t*
 Node_GetNext(const node_t* node);
 
 /**
- * @brief Gets for previous node.
+ * @brief Gets previous node.
  * @returns Pointer to previous node on success
  * (which may be NULL), NULL on failure.
  * @param node cannot be NULL.
@@ -73,9 +68,8 @@ Node_GetPrevious(const node_t* node);
  * @returns 0 on success, -1 on failure.
  * @param node cannot be NULL.
  * @param keyptr cannot be NULL.
- * @exception It sets "errno" to "EINVAL" if any param is not valid.
- * The function may also fail and set "errno" for any of the errors
- * specified for the routine "malloc".
+ * @exception It sets "errno" to "EINVAL" if any param is not valid. The function may also fail and set "errno"
+ * for any of the errors specified for the routine "malloc".
 */
 int
 Node_CopyKey(const node_t* node, char** keyptr);
@@ -85,9 +79,8 @@ Node_CopyKey(const node_t* node, char** keyptr);
  * @returns Size of data buffer on success, 0 otherwise.
  * @param node cannot be NULL.
  * @param dataptr cannot be NULL.
- * @exception It sets "errno" to "EINVAL" if any param is not valid.
- * The function may also fail and set "errno" for any of the errors
- * specified for the routine "malloc".
+ * @exception It sets "errno" to "EINVAL" if any param is not valid. The function may also fail and set "errno"
+ * for any of the errors specified for the routine "malloc".
 */
 size_t
 Node_CopyData(const node_t* node, void** dataptr);

@@ -9,13 +9,19 @@
 #define MBYTE 0.000001f
 
 #include <errno.h>
+#include <linux/limits.h> // PATH_MAX
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <linux/limits.h>
+#include <unistd.h>
 
+
+/**
+ * @brief Reads up to given bytes from given descriptor, saves data to given pre-allocated buffer.
+ * @returns read size on success, -1 on failure.
+ * @exception The function may fail and set "errno" for any of the errors specified for the routine "read".
+*/
 static inline int
 readn(long fd, void* buf, size_t size)
 {
@@ -29,13 +35,18 @@ readn(long fd, void* buf, size_t size)
 			if (errno == EINTR) continue;
 			return -1;
 		}
-		if (r == 0) return 0;   // EOF
+		if (r == 0) return 0; // EOF
 		left -= r;
 		bufptr += r;
 	}
 	return size;
 }
 
+/**
+ * @brief Writes buffer up to given size to given descriptor.
+ * @returns 1 on success, -1 on failure.
+ * @exception The function may fail and set "errno" for any of the errors specified for routine "write".
+*/
 static inline int
 writen(long fd, void* buf, size_t size)
 {
@@ -56,14 +67,26 @@ writen(long fd, void* buf, size_t size)
 	return 1;
 }
 
+/**
+ * @brief Safely converts string to long.
+ * @returns 0 on success, 2 on overflow/underflow, 1 otherwise.
+ * @param s cannot be NULL, must contain at least a character.
+ * @param n cannot be NULL.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid. The function may also fail and set "errno"
+ * for any of the errors specified for the routine "strtol".
+*/
 static inline int
-isNumber(const char* s, long* n) {
-	if (s == NULL) return 1;
-	if (strlen(s) == 0) return 1;
+isNumber(const char* s, long* n)
+{
+	if (!n || !s || strlen(s) == 0)
+	{
+		errno = EINVAL; 
+		return 1;
+	}
 	char* e = NULL;
 	errno = 0;
 	long val = strtol(s, &e, 10);
-	if (errno == ERANGE) return 2;    // overflow/underflow
+	if (errno == ERANGE) return 2; // overflow/underflow
 	if (e != NULL && *e == (char)0)
 	{
 		*n = val;
@@ -72,10 +95,22 @@ isNumber(const char* s, long* n) {
 	return 1;   // non e' un numero
 }
 
-// source: https://gist.github.com/JonathonReinhart/8c0d90191c38af2dcadb102c4e202950
+/**
+ * @brief Implementation of mkdir -p in C.
+ * @returns 0 on success, -1 on failure.
+ * @param path cannot be NULL or longer than system-defined PATH_MAX.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid. The function may also fail and set "errno"
+ * for any of the errors specified in routine "mkdir".
+ * @note source: https://gist.github.com/JonathonReinhart/8c0d90191c38af2dcadb102c4e202950
+*/
 static inline int
 mkdir_p(const char *path)
 {
+	if (!path)
+	{
+		errno = EINVAL;
+		return -1;
+	}
 	const size_t len = strlen(path);
 	char _path[PATH_MAX];
 	char *p; 
@@ -127,7 +162,6 @@ savefile(const char* path, const char* contents)
 	if (tmp) *tmp = '\0';
 	if (mkdir_p(tmp_path) != 0)
 	{
-		fprintf(stderr, "[%s:%d] %s : reached this.\n", __FILE__, __LINE__, path);
 		free(tmp_path);
 		return -1;
 	}
@@ -135,15 +169,11 @@ savefile(const char* path, const char* contents)
 	FILE* file = fopen(path, "w+");
 	if (!file)
 	{
-		fprintf(stderr, "[%s:%d] %s : reached this.\n", __FILE__, __LINE__, path);
 		free(tmp_path);
 		return -1;
 	}
 	umask(mask);
-	if (contents)
-	{
-		if (fputs(contents, file) == EOF) return -1;
-	}
+	if (contents) { if (fputs(contents, file) == EOF) return -1; }
 	fclose(file);
 	free(tmp_path);
 	return 0;

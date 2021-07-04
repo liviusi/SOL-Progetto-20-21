@@ -267,6 +267,7 @@ LinkedList_CopyAllKeys(const linked_list_t* list)
 		return NULL;
 	}
 	linked_list_t* tmp = LinkedList_Init(NULL);
+	if (!tmp) return NULL;
 	char* key;
 	const node_t* curr = list->first;
 	int errnocopy;
@@ -280,7 +281,14 @@ LinkedList_CopyAllKeys(const linked_list_t* list)
 			errno = errnocopy;
 			return NULL;
 		}
-		LinkedList_PushBack(tmp, key, strlen(key) + 1, NULL, 0);
+		if (LinkedList_PushBack(tmp, key, strlen(key) + 1, NULL, 0) != 0)
+		{
+			errnocopy = errno;
+			LinkedList_Free(tmp);
+			free(tmp);
+			errno = errnocopy;
+			return NULL;
+		}
 		free(key); key = NULL;
 		curr = Node_GetNext(curr);
 	}

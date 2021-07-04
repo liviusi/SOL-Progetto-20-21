@@ -25,7 +25,7 @@ struct _hashtable
  * @param buffer buffer to hash
  * @return hash value of input buffer
 */
-size_t
+static size_t
 HashTable_HashFunction(const void* buffer)
 {
 	if (buffer == NULL) return 0;
@@ -48,12 +48,10 @@ HashTable_HashFunction(const void* buffer)
 /**
  * String comparison.
 */
-int
+static int
 HashTable_Compare(const void* a, const void* b)
 {
-	char* buffer1 = (char*) a;
-	char* buffer2 = (char*) b;
-	return strcmp(buffer1, buffer2);
+	return strcmp((char*) a, (char*) b);
 }
 
 hashtable_t*

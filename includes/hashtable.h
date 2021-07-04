@@ -7,48 +7,34 @@
 #define _HASHTABLE_H_
 
 #include <stdlib.h>
-#include <linked_list.h>
 
-/**
- * @brief Initializes empty hash table struct given number of buckets.
- * @returns Pointer to initialized table on success, NULL on failure.
- * @exception It sets errno to ENOMEM if and only if needed memory allocation fails.
-*/
-#define HASHTABLE_INITIALIZER(buckets_no, free_func) HashTable_Init(buckets_no, NULL, NULL, free_func);
+#include <linked_list.h>
 
 // Struct fields are not exposed to maintain invariant.
 typedef struct _hashtable hashtable_t;
 
 /**
  * @brief Initializes empty hash table struct.
- * @returns Pointer to initialized table on success,
- * NULL on failure.
+ * @returns Pointer to initialized table on success, NULL on failure.
  * @param buckets_no number of buckets
- * @param hash_function pointer to function used for hashing.
- * It will be set to a default provided polynomial
- * rolling hash function if param is NULL.
- * @param hash_compare pointer to function used for
- * key comparison. It will be set to a default
- * provided string comparison function if param is NULL.
- * @param free_data pointer to function used to free node's
- * data. It will be set to free if param is NULL.
- * @exception It sets "errno" for any of the errors
- * specified for the routines "malloc", "LinkedList_Init".
+ * @param hash_function pointer to function used for hashing. It will be set to a default provided polynomial
+ * rolling hash function if NULL.
+ * @param hash_compare pointer to function used for key comparison. It will be set to a default provided string
+ * comparison function if NULL.
+ * @param free_data pointer to function used to free node's data. It will be set to free if NULL.
+ * @exception It sets "errno" for any of the errors specified for the routines "malloc", "LinkedList_Init".
 */
 hashtable_t*
 HashTable_Init(size_t buckets_no, size_t (*hash_function) (const void*), 
 		int (*hash_compare) (const void*, const void*), void (*free_data) (void*));
 
 /**
- * @brief Creates and inserts entry into table.
- * Duplicates are not allowed.
- * @returns 1 on successful insertion, 0 if it is
- * a duplicate, -1 otherwise. 
+ * @brief Creates and inserts entry into table. Duplicates are not allowed.
+ * @returns 1 on successful insertion, 0 if it is a duplicate, -1 otherwise. 
  * @param key cannot be NULL.
  * @param key_size cannot be 0.
- * @exception It sets "errno" to EINVAL if any param is not valid.
- * The function may also fail and set "errno" for any of the errors
- * specified for the routines "Node_CopyKey", "LinkedList_PushBack".
+ * @exception It sets "errno" to EINVAL if any param is not valid. The function may also fail and set "errno"
+ * for any of the errors specified for the routines "Node_CopyKey", "LinkedList_PushBack".
 */
 int
 HashTable_Insert(hashtable_t* table, const void* key,
@@ -59,32 +45,27 @@ HashTable_Insert(hashtable_t* table, const void* key,
  * @returns 1 if such entry exists, 0 if it does not, -1 on failure.
  * @param table cannot be NULL.
  * @param key cannot be NULL.
- * @exception It sets "errno" to "EINVAL" if any param is not valid.
- * The function may also fail and set "errno" for any of the errors
- * specified for the routine "Node_CopyKey".
+ * @exception It sets "errno" to "EINVAL" if any param is not valid. The function may also fail and set "errno"
+ * for any of the errors specified for the routine "Node_CopyKey".
 */
 int
 HashTable_Find(const hashtable_t* table, const void* key);
 
 /**
- * @brief Gets data corresponding to the given key to
- * non-allocated buffer.
+ * @brief Gets data corresponding to the given key to non-allocated buffer.
  * @returns Size of data buffer on success, 0 on failure.
  * @param table cannot be NULL.
  * @param key cannot be NULL.
  * @param dataptr cannot be NULL.
- * @exception It sets "errno" to "EINVAL" if any param is not valid.
- * The function may also fail and set "errno" for any of the errors
- * specified for the routines "Node_CopyKey", "Node_CopyData",
- * "Node_GetNext".
+ * @exception It sets "errno" to "EINVAL" if any param is not valid. The function may also fail and set "errno"
+ * for any of the errors specified for the routines "Node_CopyKey", "Node_CopyData", "Node_GetNext".
 */
 size_t
 HashTable_CopyOutData(const hashtable_t* table, const void* key, void** dataptr);
 
 /**
  * @brief Gets pointer to data corresponding to the given key.
- * @returns Pointer to data on success (which may be NULL),
- * NULL on failure.
+ * @returns Pointer to data on success (which may be NULL), NULL on failure.
  * @param table cannot be NULL.
  * @param key cannot be NULL.
  * @exception It sets "errno" to "EINVAL" if any param is not valid.
@@ -98,9 +79,8 @@ HashTable_GetPointerToData(const hashtable_t* table, const void* key);
  * does not exist, -1 on failure.
  * @param table cannot be NULL.
  * @param key cannot be NULL.
- * @exception It sets "errno" to "EINVAL" if any param is not valid.
- * The function may also fail and set "errno" for any of the errors
- * specified for the routine "LinkedList_Remove".
+ * @exception It sets "errno" to "EINVAL" if any param is not valid. The function may also fail and set "errno"
+ * for any of the errors specified for the routine "LinkedList_Remove".
 */
 int
 HashTable_DeleteNode(hashtable_t* table, const void* key);

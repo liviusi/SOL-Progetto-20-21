@@ -5,22 +5,21 @@
 
 #include <errno.h>
 #include <stdbool.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 #include <pthread.h>
 
-#include <wrappers.h>
-#include <linked_list.h>
 #include <bounded_buffer.h>
-
+#include <linked_list.h>
+#include <wrappers.h>
 
 struct _bounded_buffer
 {
-	size_t capacity;
-	linked_list_t* elems;
-	pthread_mutex_t mutex;
-	pthread_cond_t full;
-	pthread_cond_t empty;
+	size_t capacity; // buffer's capacity
+	linked_list_t* elems; // a linked list is used to avoid preallocating resources
+	pthread_mutex_t mutex; // used to guarantee mutual exclusion over buffer
+	pthread_cond_t full; // used to guarantee mutual exclusion over buffer
+	pthread_cond_t empty; // used to guarantee mutual exclusion over buffer
 };
 
 bounded_buffer_t*
