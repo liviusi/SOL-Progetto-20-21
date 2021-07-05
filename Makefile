@@ -10,7 +10,9 @@ TEST_DIR := ./tests
 HEADERS_DIR = ./includes/
 DUMMIES_DIR = ./dummies
 
-TARGETS = server client test1
+TARGETS = server client
+
+.DEFAULT_GOAL := all
 
 OBJS-SERVER = obj/node.o obj/linked_list.o obj/hashtable.o obj/rwlock.o obj/config.o obj/storage.o obj/bounded_buffer.o obj/server.o
 OBJS-CLIENT = obj/node.o obj/linked_list.o obj/server_interface.o obj/client.o
