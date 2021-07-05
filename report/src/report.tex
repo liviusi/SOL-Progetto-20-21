@@ -1,0 +1,270 @@
+\documentclass[11pt, italian, openany]{book}
+% Set page margins
+\usepackage[margin=2cm]{geometry}
+
+\usepackage[]{graphicx}
+\usepackage{setspace}
+\usepackage{mathptmx}
+\singlespace % interlinea singola
+% If multiple images are to be added, a folder (path) with all the images can be added here 
+\graphicspath{ {images/} }
+
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=blue,
+}
+ 
+% All page numbers positioned at the bottom of the page
+\usepackage{fancyhdr}
+\fancyhf{} % clear all header and footers
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt} % remove the header rule
+\pagestyle{fancy}
+
+% Changes the style of chapter headings
+\usepackage{titlesec}
+
+\titleformat{\chapter}
+   {\normalfont\LARGE\bfseries}{\thechapter.}{1em}{}
+
+% Change distance between chapter header and text
+\titlespacing{\chapter}{0pt}{35pt}{\baselineskip}
+\usepackage{titlesec}
+\titleformat{\section}
+  [hang] % <shape>
+  {\normalfont\bfseries\Large} % <format>
+  {} % <label>
+  {0pt} % <sep>
+  {} % <before code>
+\renewcommand{\thesection}{} % Remove section references...
+\renewcommand{\thesubsection}{\arabic{subsection}} %... from subsections
+
+% Numbered subsections
+\setcounter{secnumdepth}{3}
+
+% Prevents LaTeX from filling out a page to the bottom
+\raggedbottom
+
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{amsmath}
+% Code Listings
+\definecolor{vgreen}{RGB}{104,180,104}
+\definecolor{vblue}{RGB}{49,49,255}
+\definecolor{vorange}{RGB}{255,143,102}
+\definecolor{vlightgrey}{RGB}{245,245,245}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\usepackage{listings}
+
+\lstdefinestyle{code}{
+    language=bash,
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+\begin{document}
+
+\begin{sloppypar}
+\begin{titlepage}
+	\clearpage\thispagestyle{empty}
+	\centering
+	\vspace{1cm}
+
+    \includegraphics[scale=0.60]{unipi-logo.png}
+    
+	{\normalsize \noindent Dipartimento di Informatica \\
+	             Corso di Laurea in Informatica \par}
+	
+	\vspace{2cm}
+	{\Huge \textbf{Progetto di Laboratorio di Sistemi Operativi} \par}
+	\vspace{1cm}
+	{\large Sistemi Operativi e Laboratorio}
+	\vspace{5cm}
+
+    \begin{minipage}[t]{0.47\textwidth}
+    	{\large{ Prof. Alessio Conte}}
+    \end{minipage}\hfill\begin{minipage}[t]{0.47\textwidth}\raggedleft
+    	{\large {Giacomo Trapani \\ 600124 - Corso A\\ }}
+    \end{minipage}
+
+    \vspace{4cm}
+
+	{\normalsize Anno Accademico 2020/2021 \par}
+
+	\pagebreak
+
+\end{titlepage}
+\subsection{Premessa.}
+Il progetto consiste nella progettazione e realizzazione di un \textbf{file storage} gestito da un server multithreaded in grado
+di comunicare con dei client attraverso le funzioni implementate all'interno della API.
+
+Vengono implementate le seguenti parti opzionali: flag -D, funzioni adibite alle operazioni di lock/unlock su file,
+file di log, script statistiche.sh, politiche di rimpiazzamento LRU, LFU. Il codice viene sviluppato all'interno di un
+\href{https://github.com/liviusi/SOL-Progetto-20-21}{repository} pubblico.
+
+\subsection{Server.}
+Il server dipende dal file di configurazione il cui nome gli viene passato come unico argomento da linea di comando;
+il file passato dovr\`a rispettare la seguente sintassi, altrimenti il server non si avvier\`a:
+\begin{lstlisting}[style=code]
+NUMBER OF THREAD WORKERS = <num_workers>
+MAXIMUM NUMBER OF STORABLE FILES = <max_files>
+MAXIMUM STORAGE SIZE = <max_size>
+SOCKET FILE PATH = <path/to/socket>
+LOG FILE PATH = <path/to/log>
+REPLACEMENT POLICY = <{0, 1, 2}> # 0 FIFO, 1 LRU, 2 LFU
+\end{lstlisting}
+Non vengono permesse righe vuote, un numero di spazi non standard o argomenti non validi (i.e. una stringa dove ci si aspetterebbe
+un valore numerico).
+
+\paragraph*{Struttura interna.}
+Al momento dell'avvio del programma, il server inizializza le strutture dati necessarie per il proprio
+funzionamento. Il server funziona seguendo il modello manager-worker: il manager si mette in ascolto di nuove richieste da client
+precedentementi connessi e di nuove connessioni chiamando la \textit{select} e aggiunge alla coda concorrente (si faccia
+riferimento a \textit{src/data\_structures/bounded\_buffer.c} per i dettagli implementativi) usata per gestire le
+richieste il descrittore pronto sotto forma di stringa; la sua esecuzione termina - come per specifica - gestendo opportunamente
+i segnali SIGINT, SIGHUP, SIGQUIT mediante un signal handler che va a settare dei flag dichiarati "volatile sig\_atomic\_t".
+
+\paragraph*{Thread workers.}
+I thread workers si occupano di gestire interamente una richiesta ricevuta da un client traducendo il messaggio inviato dal client
+attraverso le funzioni implementate nella API client-server, le letture e le scritture vengono gestite chiamando i metodi
+\textit{readn}, \textit{writen} forniti a lezione. I workers - all'interno di un loop infinito - rimuovono dalla coda concorrente
+il descrittore messo in coda dal manager, leggono la richiesta inviata facendone il parsing e la traducono in una funzione
+sul filesystem implementato; a questo punto, seguendo un modello richiesta-risposta, invia al client il risultato e potenzialmente
+(sulla base del tipo della richiesta) si occupa di inviare anche i file letti o le vittime dell'algoritmo di rimpiazzamento.
+
+\paragraph*{Gestione degli errori.}
+Gli errori vengono gestiti quando possibile, ma nel caso di errori ritenuti fatali (i.e. tutti gli errori che lasciano lo storage
+in uno stato inconsistente o che non permettano a un worker di occuparsi di una richiesta) si sceglie di far terminare il programma.
+
+\subsubsection{Storage.}
+L'elemento chiave dell'intero progetto \`e il filesystem implementato (si faccia riferimento a \textit{src/storage.c} per i
+dettagli implementativi) dichiarato come una struct opaca (i.e. accessibile solo mediante le funzioni messe a disposizione dall'
+interfaccia); al suo interno i file vengono salvati come entries di una tabella hash le cui coppie chiave-valore sono formate
+dal nome del file (definito come il suo path assoluto) e da quello che concretamente \`e il file (definito come una struct
+di tipo "stored\_file\_t").
+
+\paragraph*{Accessi.}
+Gli accessi allo storage vengono moderati da una read-write lock write-biased (si faccia riferimento a
+\textit{src/data\_structures/rwlock.c} per l'implementazione) in modo tale da permettere accessi in mutua esclusione o a pi\`u
+lettori alla volta o a un singolo scrittore evitando dunque potenziali colli di bottiglia: si accede in scrittura allo storage se
+e solo se l'operazione pu\`o modificare il numero di files (e.g. a seguito delle operazioni di "Storage\_writeFile" e di
+"Storage\_appendToFile" che possono far partire l'algoritmo di rimpiazzamento, della "Storage\_openFile" se viene richiesta
+la creazione di un file o della "Storage\_removeFile" che ne richiede la effettiva cancellazione).
+
+Lo stesso tipo di lock viene utilizzato anche all'interno dei file salvati: si accede in scrittura se e solo se un parametro
+ne viene modificato, in lettura altrimenti.
+
+\paragraph*{Gestione degli errori.}
+Si gestiscono gli errori facendoli galleggiare verso il chiamante; le funzionalit\`a implementate restituiscono un valore definito
+come "OP\_FAILURE" a seguito di errori non fatali (e.g. quando la semantica di una funzione non viene rispettata), "OP\_FATAL"
+quando l'errore \`e di fatto fatale e lascia il sistema in uno stato non consistente (e.g. quando una operazione di lock fallisce).
+
+\paragraph*{Politiche di rimpiazzamento.}
+Essendo lo storage gestito come una cache di file, esiste la possibilit\`a di incorrere in \textit{capacity miss}.
+\`E evidente che si possa avere capacity miss solo a fronte di 3 delle operazioni messe a disposizione:
+"Storage\_openFile" (se viene richiesta la creazione di un nuovo file, il numero di files salvabili potrebbe superare il limite
+imposto), "Storage\_writeFile" e "Storage\_appendToFile" (possono scrivere all'interno del server una quantit\`a di dati
+al momento non disponibile); si sceglie di non far partire l'algoritmo di rimpiazzamento nel caso della "Storage\_openFile"
+bens\`i di restituire un errore.
+
+Vengono implementate le politiche di rimpiazzamento FIFO (che trova una vittima in \(O(1)\)), LFU e LRU (che la trovano in
+\(O(nlogn)\)): la prima si occupa banalmente di eliminare il primo file salvato all'interno dello storage (in ordine cronologico),
+la seconda e la terza richiedono di ordinare sulla base o della frequenza o del tempo di utilizzo dei singoli file (viene
+implementato con una chiamata alla funzione di libreria \textit{qsort}).
+
+\subsection{Client.}
+Il client \`e un programma che - a seguito di una analisi degli argomenti passati da linea di comando - manda al server le
+richieste opportune interagendo con la API richiesta dalla specifica a patto che questi siano validi (si faccia riferimento a 
+\textit{src/client.c:validate} per la semantica dei singoli flag); si richiede che gli argomenti passati a ogni comando siano
+validi, che ci sia uno spazio vuoto tra il comando e l'argomento (e.g. "-f sockname" e non "-fsockname"), che ogni comando sia
+valido e non risulta responsabilit\`a del client convertire path relativi in path assoluti. Ogni comando viene eseguito nell'ordine
+con cui viene passato come argomento al programma.
+
+\paragraph*{Gestione degli errori.}
+Si ricorda che l'interfaccia verso il server mette a disposizione un flag booleano "exit\_on\_fatal\_errors" per decidere quale
+debba essere la risposta del client a fronte di una risposta segnalante il fatto che lo storage sia in una situazione di
+inconsistenza. Si utilizzano delle variabili globali per denotare tutte le risorse da rilasciare al momento della terminazione
+qualsiasi sia la sua causa.
+
+\paragraph*{Gestione dei file espulsi o letti.}
+A fronte di una espulsione o di una lettura che implichi il salvataggio dei dati sul disco, viene ricreato ricorsivamente all'
+interno della directory scelta l'intero percorso verso ciascuno dei singoli file (il comportamento \`e analogo a quello del comando
+"mkdir -p").
+
+\subsection{Interfaccia per interagire col server.}
+Come richiesto dalla specifica, viene messa a disposizione una interfaccia per interagire col server (si faccia riferimento a 
+\textit{src/server\_interface.c} per i dettagli implementativi) che si occupa di convertire le richieste del client in
+richieste opportunamente leggibili dal server. Per ognuna delle operazioni implementate viene infatti definito un campo di una enum
+"opcodes\_t" corrispondente e si invia al server un buffer contenente - in primis - questo valore (si faccia riferimento alla
+documentazione per la semantica dei singoli metodi).
+
+\paragraph*{openFile.}
+Nonostante richiedere la creazione di un file possa causare capacity miss all'interno dello storage, il prototipo fornito
+per questa funzione non prevede la possibilit\`a di salvare su disco all'interno di una qualche directory il file espulso:
+per questo motivo, si sceglie di non far partire l'algoritmo di rimpiazzamento a seguito di questo tipo di richiesta ma si
+preferisce restituire un messaggio di errore opportunamente definito.
+
+\paragraph*{lockFile.}
+La specifica richiede che il client si blocchi su questa richiesta se il lock sul file specificato non pu\`o essere acquisito
+poich\'e posseduto da un altro client: si sceglie di implementare questa cosa rimettendo in coda la richiesta finch\'e non ha
+successo o fallisce per un motivo diverso da quello previsto.
+
+\paragraph*{Gestione degli errori.}
+Si sceglie di far galleggiare gli errori verso il chiamante e si mette a disposizione un flag booleano "exit\_on\_fatal\_errors"
+che, se settato, forza la terminazione a seguito di un errore fatale all'interno dello storage.
+
+\subsection{Makefile.}
+Viene messo a disposizione un Makefile che fornisce - tra gli altri - i target "all" (per creare tutti gli eseguibili),
+"clean" e "cleanall" (per pulire la directory), "test1" (che lancia il test1) e "test2" (che lancia il test2).
+
+\paragraph*{test1.}
+Il Makefile crea il file di configurazione necessario per avviare il server coi parametri richiesti dalla specifica, dopodich\'e
+esegue il file \textit{script1.sh} che si occupa di avviare il test una volta per ogni politica di rimpiazzamento implementata e di
+eseguire almeno una volta ognuno dei comandi implementati. Durante l'esecuzione, lo script crea anche dei file da inviare al server,
+operazione che potrebbe occupare un po' di tempo a seconda della macchina su cui lo si sta eseguendo in quanto la specifica
+prevede che la capacit\`a del server sia relativamente alta.
+
+\paragraph*{test2.}
+Il Makefile crea il file di configurazione necessario per avviare il server coi parametri richiesti dalla specifica, dopodich\'e
+esegue il file \textit{src/script2.sh} che si occupa di avviare il test una volta per ogni politica di rimpiazzamento implementata
+utilizzando dei file di input creati appositamente per far partire pi\'u volte l'algoritmo di rimpiazzamento. Durante l'esecuzione,
+lo script crea alcune cartelle contenenti file da inviare al server.
+
+\subsection{Logging.}
+Durante l'esecuzione, il server scrive all'interno del file di logging specificato dal file di configurazione accedendovi in mutua
+esclusione. Precisamente, scrive l'identificativo del thread worker che ha gestito la richiesta, il tipo di richiesta, l'esito e -
+dove \`e rilevante - il numero di bytes letti, scritti, il numero di vittime in seguito a una delle operazioni che pu\`o far
+partire l'algoritmo di rimpiazzamento; salva inoltre i dati rilevanti per il server, come il descrittore del nuovo client
+connesso, il numero di client connessi al momento di una nuova connessione e - al momento della terminazione - il numero
+massimo (raggiunto) di file salvati, la massima dimensione (raggiunta) dello storage in MB.
+
+\paragraph*{statistiche.sh.}
+Viene messo a disposizione lo script \textit{src/statistiche.sh} per effettuare il parsing del file di log creato durante l'
+esecuzione che stamper\`a un sunto del file (di log) specificato da linea di comando.
+
+\pagebreak
+\end{sloppypar}
+\end{document}
