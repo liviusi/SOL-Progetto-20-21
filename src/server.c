@@ -98,6 +98,10 @@ main(int argc, char* argv[])
 		fprintf(stdout, "Usage: %s <path-to-config.txt>\n", argv[0]);
 		return 1;
 	}
+
+	// -------------
+	// DECLARATIONS
+	// -------------
 	int err; // placeholder for functions' output values
 	int fd_socket = -1; // socket's file descriptor
 	int fd_new_client = -1; // new client's fd
@@ -353,7 +357,7 @@ main(int argc, char* argv[])
 		for (size_t j = 0; j < (size_t) workers_pool_size; j++)
 			EXIT_IF_NEQ(err, 0, BoundedBuffer_Enqueue(tasks, new_task), BoundedBuffer_Enqueue);
 		for (size_t j = 0; j < (size_t) workers_pool_size; j++)
-			pthread_join(workers[i], NULL);
+			pthread_join(workers[j], NULL);
 		ServerConfig_Free(config);
 		Storage_Print(storage);
 		LOG_EVENT("Maximum size reached : %5f.\n", Storage_GetReachedSize(storage) * MBYTE);
@@ -369,6 +373,7 @@ main(int argc, char* argv[])
 		close(pipe_worker2manager[1]);
 		fclose(log_file);
 		if (fd_socket != -1) close(fd_socket);
+		return 0;
 
 
 	failure:
