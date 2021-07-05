@@ -150,9 +150,22 @@ mkdir_p(const char *path)
 	return 0;
 }
 
+/**
+ * @brief Saves given content in given filename.
+ * @returns 0 on success, -1 on failure.
+ * @param path cannot be NULL.
+ * @param contents cannot be NULL.
+ * @exception It sets "errno" to "EINVAL" if any param is not valid. The function may also fail and set "errno"
+ * for any of the errors specified for routines "malloc", "mkdir_p", "fopen", "fputs".
+*/
 static inline int
 savefile(const char* path, const char* contents)
 {
+	if (!path || !contents)
+	{
+		errno = EINVAL;
+		return -1;
+	}
 	int len = strlen(path);
 	char* tmp_path = (char*) malloc(sizeof(char) * (len + 1));
 	if (!tmp_path) return -1;
@@ -172,10 +185,17 @@ savefile(const char* path, const char* contents)
 		free(tmp_path);
 		return -1;
 	}
-	umask(mask);
-	if (contents) { if (fputs(contents, file) == EOF) return -1; }
-	fclose(file);
 	free(tmp_path);
+	umask(mask);
+	if (contents)
+	{
+		if (fputs(contents, file) == EOF)
+		{
+			fclose(file);
+			return -1;
+		}
+	}
+	fclose(file);
 	return 0;
 }
 
