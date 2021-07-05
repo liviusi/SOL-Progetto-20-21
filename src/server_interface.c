@@ -6,26 +6,27 @@
 #define _DEFAULT_SOURCE
 
 #include <errno.h>
-#include <math.h>
 #include <linux/limits.h>
-#include <time.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <sys/un.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
+#include <sys/time.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <time.h>
+#include <unistd.h>
+
 
 #include <server_defines.h>
 #include <server_interface.h>
 #include <utilities.h>
 #include <wrappers.h>
 
-#define ERRORSTRINGLEN 128
-#define OPVALUE_LEN 2
+#define ERRORSTRINGLEN 128 // maximum length for errno description
+#define OPVALUE_LEN 2 // maximum length of buffer to read when reading the output value of an operation inside the file system
 
 static int fd_socket = -1;
 static char socketpath[MAXPATH];
@@ -60,11 +61,15 @@ openConnection(const char* sockname, int msec, const struct timespec abstime)
 	strncpy(sock_addr.sun_path, sockname, strlen(sockname) + 1);
 	sock_addr.sun_family = AF_UNIX;
 
-	time_t now;
-	while(connect(fd_socket, (struct sockaddr*) &sock_addr, sizeof(sock_addr)) == -1)
+	errno = 0;
+	while (connect(fd_socket, (struct sockaddr*) &sock_addr, sizeof(sock_addr)) == -1)
 	{
-		err = errno;
-		now = time(NULL);
+		if (errno != ENOENT)
+		{
+			err = errno;
+			goto failure;
+		}
+		time_t now = time(NULL);
 		if (now >= abstime.tv_sec)
 		{
 			fd_socket = -1;
@@ -72,9 +77,10 @@ openConnection(const char* sockname, int msec, const struct timespec abstime)
 			goto failure;
 		}
 		usleep(msec * 1000); // from milliseconds to microseconds
+		errno = 0;
 	}
 
-	strncpy(socketpath, sockname, MAXPATH);
+	strcpy(socketpath, sockname);
 
 	PRINT_IF(print_enabled, "openConnection %s : SUCCESS.\n", sockname);
 	return 0;
@@ -594,9 +600,8 @@ readNFiles(int N, const char* dirname)
  * @brief Checks whether file is a regular file.
  * @returns 1 if it is a regular file, 0 if it is not, -1 on failure.
  * @param pathname cannot be NULL.
- * @exception It sets "errno" to "EINVAL" if any param is not valid.
- * The function may also fail and set "errno" for any of the errors
- * specified for the routine "stat".
+ * @exception It sets "errno" to "EINVAL" if any param is not valid. The function may also fail and set "errno"
+ * for any of the errors specified for the routine "stat".
 */
 static int
 is_regular_file(const char *pathname)
