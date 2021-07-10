@@ -71,12 +71,15 @@ pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER; // mutex for log file
  * @returns NULL.
  * @note IT IS ASSUMED ALL MESSAGES ARE SENT THROUGH THE API AND THUS VALID.
 */
-static void* worker_routine(void*);
+static void*
+worker_routine(void*);
 
 /**
- * Used to handle signals according to requirements.
+ * @brief Used to handle signals according to requirements.
+ * @returns NULL.
 */
-void signal_handler(int);
+static void*
+signal_handler_routine(void*);
 
 /**
  * Used to give each worker thread the needed arguments in order to communicate with the
@@ -113,10 +116,14 @@ main(int argc, char* argv[])
 	struct sigaction sig_action; sigset_t sigset;
 	char* sockname = NULL; // socket's name
 	pthread_t* workers = NULL; // worker threads pool
+	pthread_t signal_handler_thread; // signal handler's thread id
+	bool signal_handler_created = false; // toggled on when signal handler thread has been created
 	unsigned long workers_pool_size = 0; // worker threads pool size
 	fd_set master_read_set; // read set
 	fd_set read_set; // copy of the original set
 	int fd_num = 0; // number of fds in set
+	struct timeval timeout_master = { 0, 100000 }; // 100ms timeout used to check whether select has gotten stuck
+	struct timeval timeout_copy; // used to preserve timeout value
 	bounded_buffer_t* tasks = NULL; // used to store tasks to be done
 	struct workers_args* workers_args = NULL; // worker threads' arguments
 	size_t online_clients = 0; // number of clients currently online
@@ -132,7 +139,7 @@ main(int argc, char* argv[])
 	// ----------------
 
 	memset(&sig_action, 0, sizeof(sig_action));
-	sig_action.sa_handler = signal_handler;
+	sig_action.sa_handler = SIG_IGN;
 
 	sigemptyset(&sigset);
 	sigaddset(&sigset, SIGINT);
@@ -140,12 +147,12 @@ main(int argc, char* argv[])
 	sigaddset(&sigset, SIGQUIT);
 	sig_action.sa_mask = sigset;
 
-	// per requirements: SIGINT, SIGQUIT, SIGHUP are to be explicitly handled
-	EXIT_IF_NEQ(err, 0, sigaction(SIGINT, &sig_action, NULL), sigaction);
-	EXIT_IF_NEQ(err, 0, sigaction(SIGHUP, &sig_action, NULL), sigaction);
-	EXIT_IF_NEQ(err, 0, sigaction(SIGQUIT, &sig_action, NULL), sigaction);
 	// per requirements: SIGPIPE is to be ignored
 	EXIT_IF_NEQ(err, 0, sigaction(SIGPIPE, &sig_action, NULL), sigaction);
+	// use dedicated thread to handle signals
+	EXIT_IF_NEQ(err, 0, pthread_sigmask(SIG_BLOCK, &sigset, NULL), pthread_sigmask);
+	EXIT_IF_NEQ(err, 0, pthread_create(&signal_handler_thread, NULL, &signal_handler_routine, (void*) &sigset), pthread_create);
+	signal_handler_created = true;
 
 	// ---------------------------------
 	// SERVER INTERNALS' INITIALIZATION
@@ -286,19 +293,22 @@ main(int argc, char* argv[])
 	{
 		if (terminate) goto cleanup;
 
+		if (online_clients == 0 && no_more_clients) goto cleanup;
+
 		// fd set is to be reset as select does not preserve it
 		read_set = master_read_set;
-		if ((select(fd_num + 1, &read_set, NULL, NULL, NULL)) == -1)
+		timeout_copy = timeout_master; // select does not preserve timeout value
+		if ((select(fd_num + 1, &read_set, NULL, NULL, &timeout_copy)) == -1)
 		{
-			if (errno == EINTR)
-			{
-				if (no_more_clients && online_clients == 0) break;
-				continue;
-			}
-			else
+			if (errno != EINTR)
 			{
 				perror("select");
 				exit(EXIT_FAILURE);
+			}
+			else
+			{
+				if (online_clients == 0 && no_more_clients) break;
+				else continue;
 			}
 		}
 
@@ -312,16 +322,15 @@ main(int argc, char* argv[])
 				{
 					EXIT_IF_EQ(err, -1, readn((long) j, (void*) pipe_buffer, PIPEBUFFERLEN), readn);
 					EXIT_IF_NEQ(err, 1, sscanf(pipe_buffer, "%d", &pipe_msg), sscanf);
-					if (pipe_msg) // tmp != 0 means no client left
+					if (pipe_msg) // msg != 0 means no client left
 					{
 						FD_SET(pipe_msg, &master_read_set);
 						fd_num = MAX(pipe_msg, fd_num);
 					}
 					else // client left
 					{
-						online_clients--;
-						if (online_clients == 0 && no_more_clients)
-							goto cleanup;
+						if (online_clients) online_clients--;
+						if (online_clients == 0 && no_more_clients) break;
 					}
 				}
 				else if (j == fd_socket) // new client
@@ -341,6 +350,7 @@ main(int argc, char* argv[])
 				{
 					memset(new_task, 0, TASKLEN);
 					snprintf(new_task, TASKLEN, "%d", j);
+					FD_CLR(j, &master_read_set);
 					if (j == fd_num) fd_num--;
 					// push ready file descriptor to task queue for workers
 					EXIT_IF_EQ(err, -1, BoundedBuffer_Enqueue(tasks, new_task), BoundedBuffer_Enqueue);
@@ -353,11 +363,13 @@ main(int argc, char* argv[])
 
 
 	cleanup:
+		puts("cleanup!!");
 		snprintf(new_task, TASKLEN, "%d", TERMINATE_WORKER);
 		for (size_t j = 0; j < (size_t) workers_pool_size; j++)
 			EXIT_IF_NEQ(err, 0, BoundedBuffer_Enqueue(tasks, new_task), BoundedBuffer_Enqueue);
 		for (size_t j = 0; j < (size_t) workers_pool_size; j++)
 			pthread_join(workers[j], NULL);
+		pthread_join(signal_handler_thread, NULL);
 		ServerConfig_Free(config);
 		Storage_Print(storage);
 		LOG_EVENT("Maximum size reached : %5f.\n", Storage_GetReachedSize(storage) * MBYTE);
@@ -387,6 +399,7 @@ main(int argc, char* argv[])
 			}
 		}
 		free(workers);
+		if (signal_handler_created) pthread_kill(signal_handler_thread, SIGKILL);
 		ServerConfig_Free(config);
 		Storage_Free(storage);
 		BoundedBuffer_Free(tasks);
@@ -397,6 +410,32 @@ main(int argc, char* argv[])
 		free(log_name);
 		free(workers_args);
 		exit(EXIT_FAILURE);
+}
+
+static void*
+signal_handler_routine(void* arg)
+{
+	sigset_t* set = (sigset_t*) arg; // used to denote signal set
+	int err; // placeholder for functions' output values
+	int sig; // used to denote received signal
+	while (1)
+	{
+		EXIT_IF_NEQ(err, 0, sigwait(set, &sig), sigwait);
+		switch (sig)
+		{
+			case SIGINT:
+			case SIGQUIT:
+				terminate = 1;
+				return NULL;
+
+			case SIGHUP:
+				no_more_clients = 1;
+				return NULL;
+
+			default:
+				break;
+		}
+	}
 }
 
 static void*
