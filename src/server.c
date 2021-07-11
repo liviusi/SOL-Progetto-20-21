@@ -298,6 +298,7 @@ main(int argc, char* argv[])
 		// fd set is to be reset as select does not preserve it
 		read_set = master_read_set;
 		timeout_copy = timeout_master; // select does not preserve timeout value
+		// A timeout is used not to be undefinitely locked on select
 		if ((select(fd_num + 1, &read_set, NULL, NULL, &timeout_copy)) == -1)
 		{
 			if (errno != EINTR)
@@ -372,18 +373,19 @@ main(int argc, char* argv[])
 		pthread_join(signal_handler_thread, NULL);
 		ServerConfig_Free(config);
 		Storage_Print(storage);
-		LOG_EVENT("Maximum size reached : %5f.\n", Storage_GetReachedSize(storage) * MBYTE);
-		LOG_EVENT("Maximum file number : %lu.\n", Storage_GetReachedFiles(storage));
+		if (log_file)
+		{
+			LOG_EVENT("Maximum size reached : %5f.\n", Storage_GetReachedSize(storage) * MBYTE);
+			LOG_EVENT("Maximum file number : %lu.\n", Storage_GetReachedFiles(storage));
+		}
 		Storage_Free(storage);
 		BoundedBuffer_Free(tasks);
-		unlink(sockname);
-		free(sockname);
+		if (sockname) { unlink(sockname); free(sockname); }
 		free(log_name);
 		free(workers_args);
 		free(workers);
-		close(pipe_worker2manager[0]);
-		close(pipe_worker2manager[1]);
-		fclose(log_file);
+		if (pipe_init) { close(pipe_worker2manager[0]); close(pipe_worker2manager[1]); }
+		if (log_file) fclose(log_file);
 		if (fd_socket != -1) close(fd_socket);
 		return 0;
 
