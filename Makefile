@@ -73,9 +73,15 @@ test2: client server
 	@chmod +x scripts/script2.sh
 	scripts/script2.sh
 
+test3: client server
+	@echo "NUMBER OF THREAD WORKERS = 8\nMAXIMUM NUMBER OF STORABLE FILES = 100\nMAXIMUM STORAGE SIZE = 32000000\nSOCKET FILE PATH = $(PWD)/socket.sk\nLOG FILE PATH = $(PWD)/logs/FIFO3.log\nREPLACEMENT POLICY = 0" > config3.txt
+	@chmod +x scripts/script3.sh
+	@chmod +x scripts/script3_aux.sh
+	scripts/script3.sh
+
 .PHONY: clean cleanall all dummies
 all: $(TARGETS)
 clean cleanall:
-	rm -rf $(BUILD_DIR)/* $(OBJ_DIR)/* logs/*.log *.sk test1 test2 dummies* *.txt
+	rm -rf $(BUILD_DIR)/* $(OBJ_DIR)/* logs/*.log *.sk test1 test2 test3 dummies* *.txt
 	@touch $(BUILD_DIR)/.keep
 	@touch $(OBJ_DIR)/.keep
