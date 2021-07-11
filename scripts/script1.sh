@@ -5,6 +5,7 @@ RESET_COLOR="\033[0m"
 
 # starting
 echo -e "${GREEN}TEST 1${RESET_COLOR}"
+echo -e "${GREEN}\tWARNING: THIS TEST TAKES A LONG TIME${RESET_COLOR}"
 # creating dummies
 echo -e "${GREEN}Creating dummy files (this may take a while...)${RESET_COLOR}"
 mkdir dummies
