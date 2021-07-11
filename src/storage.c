@@ -1076,6 +1076,7 @@ Storage_GetReachedSize(storage_t* storage)
 	size_t res = 0;
 	if (RWLock_WriteLock(storage->lock) != 0) return 0;
 	storage->reached_storage_size = MAX(storage->reached_storage_size, storage->storage_size);
+	res = storage->reached_storage_size;
 	if (RWLock_WriteUnlock(storage->lock) != 0) return 0;
 	return res;
 }
