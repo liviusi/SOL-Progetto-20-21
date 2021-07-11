@@ -113,7 +113,7 @@ main(int argc, char* argv[])
 	server_config_t* config = NULL; // server config
 	storage_t* storage = NULL; // server storage
 	struct sockaddr_un saddr; // socket address
-	struct sigaction sig_action; sigset_t sigset;
+	struct sigaction sig_action; sigset_t sigset; // signal mask
 	char* sockname = NULL; // socket's name
 	pthread_t* workers = NULL; // worker threads pool
 	pthread_t signal_handler_thread; // signal handler's thread id
@@ -308,6 +308,7 @@ main(int argc, char* argv[])
 			else
 			{
 				if (online_clients == 0 && no_more_clients) break;
+				else if (terminate) goto cleanup;
 				else continue;
 			}
 		}
@@ -363,7 +364,6 @@ main(int argc, char* argv[])
 
 
 	cleanup:
-		puts("cleanup!!");
 		snprintf(new_task, TASKLEN, "%d", TERMINATE_WORKER);
 		for (size_t j = 0; j < (size_t) workers_pool_size; j++)
 			EXIT_IF_NEQ(err, 0, BoundedBuffer_Enqueue(tasks, new_task), BoundedBuffer_Enqueue);
@@ -974,26 +974,4 @@ worker_routine(void* arg)
 	}
 	free(request);
 	return NULL;
-}
-
-/**
- * @brief Signal handler.
-*/
-void
-signal_handler(int signum)
-{
-	switch (signum)
-	{
-		case SIGINT:
-		case SIGQUIT:
-			terminate = 1;
-			break;
-
-		case SIGHUP:
-			no_more_clients = 1;
-			break;
-		
-		case SIGPIPE:
-			break;
-	}
 }
