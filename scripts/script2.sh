@@ -32,7 +32,7 @@ cp -r dummies2 dummies3
 
 # booting the server
 echo -e "${GREEN}[FIFO] Booting the server${RESET_COLOR}"
-valgrind --leak-check=full build/server ./config2.txt &
+build/server ./config2.txt &
 # server pid
 SERVER_PID=$!
 export SERVER_PID
@@ -58,7 +58,7 @@ sed -i -e 's/FIFO2.log/LRU2.log/g' config2.txt
 
 echo -e "${GREEN}[LRU] Booting the server${RESET_COLOR}"
 
-valgrind --leak-check=full build/server ./config2.txt &
+build/server ./config2.txt &
 # server pid
 SERVER_PID=$!
 export SERVER_PID
@@ -85,7 +85,7 @@ sed -i -e 's/LRU2.log/LFU2.log/g' config2.txt
 
 echo -e "${GREEN}[LFU] Booting the server${RESET_COLOR}"
 
-valgrind --leak-check=full build/server ./config2.txt &
+build/server ./config2.txt &
 # server pid
 SERVER_PID=$!
 export SERVER_PID
