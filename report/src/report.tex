@@ -121,7 +121,7 @@
 Il progetto consiste nella progettazione e realizzazione di un \textbf{file storage} gestito da un server multithreaded in grado
 di comunicare con dei client attraverso le funzioni implementate all'interno della API.
 
-Vengono implementate le seguenti parti opzionali: flag -D, funzioni adibite alle operazioni di lock/unlock su file,
+Vengono implementate le seguenti parti opzionali: flag -D, funzioni adibite alle operazioni di lock/unlock su file, test3,
 file di log, script statistiche.sh, politiche di rimpiazzamento LRU, LFU. Il codice viene sviluppato all'interno di un
 \href{https://github.com/liviusi/SOL-Progetto-20-21}{repository} pubblico.
 
@@ -140,12 +140,23 @@ Non vengono permesse righe vuote, un numero di spazi non standard o argomenti no
 un valore numerico).
 
 \paragraph*{Struttura interna.}
-Al momento dell'avvio del programma, il server inizializza le strutture dati necessarie per il proprio
-funzionamento. Il server funziona seguendo il modello manager-worker: il manager si mette in ascolto di nuove richieste da client
-precedentementi connessi e di nuove connessioni chiamando la \textit{select} e aggiunge alla coda concorrente (si faccia
-riferimento a \textit{src/data\_structures/bounded\_buffer.c} per i dettagli implementativi) usata per gestire le
-richieste il descrittore pronto sotto forma di stringa; la sua esecuzione termina - come per specifica - gestendo opportunamente
-i segnali SIGINT, SIGHUP, SIGQUIT mediante un signal handler che va a settare dei flag dichiarati "volatile sig\_atomic\_t".
+Al momento dell'avvio del programma, il server maschera i segnali SIGHUP, SIGINT, SIGQUIT e ne affida la gestione a un thread
+dedicato: questo si occupa di segnare il flag "\textit{no\_more\_clients}" (quando settato, il server smette di accettare nuove
+connessioni, finisce per\`o di occuparsi delle richieste dei client connessi prima di terminare) nel caso in cui riceva il primo,
+"\textit{terminate}" negli altri casi (il server termina lasciando il sistema in modo consistente non appena possibile).
+A questo punto vengono inizializzate le strutture dati necessarie (si sceglie di terminare se anche solo una delle operazioni
+necessarie non ha successo).
+
+Il server funziona seguendo il modello manager-worker; il manager (i.e. il "main") si mette in ascolto chiamando la
+\textit{select} e - basandosi sul descrittore pronto - distingue i seguenti casi:
+\begin{itemize}[topsep=0pt]
+\itemsep-0.3em
+    \item si sta leggendo dalla pipe di comunicazione tra thread workers e thread manager (si legge un valore diverso da zero
+    se e solo se il descrittore del client deve essere riaggiunto all'insieme di quelli da cui si sta leggendo);
+    \item si sta leggendo dal descrittore del socket (in questo caso si gestisce l'arrivo di un nuovo client);
+    \item si sta leggendo dal descrittore di un client (in questo caso, il descrittore viene inviato alla coda concorrente in modo
+    che poi un worker possa occuparsene e si elimina dall'insieme di quelli da cui si sta leggendo).
+\end{itemize}
 
 \paragraph*{Thread workers.}
 I thread workers si occupano di gestire interamente una richiesta ricevuta da un client traducendo il messaggio inviato dal client
@@ -153,7 +164,8 @@ attraverso le funzioni implementate nella API client-server, le letture e le scr
 \textit{readn}, \textit{writen} forniti a lezione. I workers - all'interno di un loop infinito - rimuovono dalla coda concorrente
 il descrittore messo in coda dal manager, leggono la richiesta inviata facendone il parsing e la traducono in una funzione
 sul filesystem implementato; a questo punto, seguendo un modello richiesta-risposta, invia al client il risultato e potenzialmente
-(sulla base del tipo della richiesta) si occupa di inviare anche i file letti o le vittime dell'algoritmo di rimpiazzamento.
+(sulla base del tipo della richiesta) si occupa di inviare anche i file letti o le vittime dell'algoritmo di rimpiazzamento; nel
+caso in cui il descrittore letto sia "0", il thread termina (\`e questo il messaggio di terminazione inviato dal manager).
 
 \paragraph*{Gestione degli errori.}
 Gli errori vengono gestiti quando possibile, ma nel caso di errori ritenuti fatali (i.e. tutti gli errori che lasciano lo storage
@@ -161,7 +173,7 @@ in uno stato inconsistente o che non permettano a un worker di occuparsi di una 
 
 \subsubsection{Storage.}
 L'elemento chiave dell'intero progetto \`e il filesystem implementato (si faccia riferimento a \textit{src/storage.c} per i
-dettagli implementativi) dichiarato come una struct opaca (i.e. accessibile solo mediante le funzioni messe a disposizione dall'
+dettagli implementativi) dichiarato come una struct opaca (i.e. accessibile solo mediante le funzioni messe a di\-spo\-sizione dall'
 interfaccia); al suo interno i file vengono salvati come entries di una tabella hash le cui coppie chiave-valore sono formate
 dal nome del file (definito come il suo path assoluto) e da quello che concretamente \`e il file (definito come una struct
 di tipo "stored\_file\_t").
@@ -169,7 +181,7 @@ di tipo "stored\_file\_t").
 \paragraph*{Accessi.}
 Gli accessi allo storage vengono moderati da una read-write lock write-biased (si faccia riferimento a
 \textit{src/data\_structures/rwlock.c} per l'implementazione) in modo tale da permettere accessi in mutua esclusione o a pi\`u
-lettori alla volta o a un singolo scrittore evitando dunque potenziali colli di bottiglia: si accede in scrittura allo storage se
+lettori alla volta o a un singolo scrittore evitando dunque potenziali colli di bottiglia: si accede in scrittura allo sto\-ra\-ge se
 e solo se l'operazione pu\`o modificare il numero di files (e.g. a seguito delle operazioni di "Storage\_writeFile" e di
 "Storage\_appendToFile" che possono far partire l'algoritmo di rimpiazzamento, della "Storage\_openFile" se viene richiesta
 la creazione di un file o della "Storage\_removeFile" che ne richiede la effettiva cancellazione).
@@ -200,8 +212,8 @@ Il client \`e un programma che - a seguito di una analisi degli argomenti passat
 richieste opportune interagendo con la API richiesta dalla specifica a patto che questi siano validi (si faccia riferimento a 
 \textit{src/client.c:validate} per la semantica dei singoli flag); si richiede che gli argomenti passati a ogni comando siano
 validi, che ci sia uno spazio vuoto tra il comando e l'argomento (e.g. "-f sockname" e non "-fsockname"), che ogni comando sia
-valido e non risulta responsabilit\`a del client convertire path relativi in path assoluti. Ogni comando viene eseguito nell'ordine
-con cui viene passato come argomento al programma.
+valido e che - nel caso in cui il comando richieda esplicitamente il nome di un file - venga passato il suo path assoluto.
+Ogni comando viene eseguito nell'ordine con cui viene passato come argomento al programma.
 
 \paragraph*{Gestione degli errori.}
 Si ricorda che l'interfaccia verso il server mette a disposizione un flag booleano "exit\_on\_fatal\_errors" per decidere quale
@@ -215,7 +227,7 @@ interno della directory scelta l'intero percorso verso ciascuno dei singoli file
 "mkdir -p").
 
 \subsection{Interfaccia per interagire col server.}
-Come richiesto dalla specifica, viene messa a disposizione una interfaccia per interagire col server (si faccia riferimento a 
+Come richiesto dalla specifica, viene messa a disposizione una interfaccia per interagire col server (si faccia rife\-ri\-mento a 
 \textit{src/server\_interface.c} per i dettagli implementativi) che si occupa di convertire le richieste del client in
 richieste opportunamente leggibili dal server. Per ognuna delle operazioni implementate viene infatti definito un campo di una enum
 "opcodes\_t" corrispondente e si invia al server un buffer contenente - in primis - questo valore (si faccia riferimento alla
@@ -230,7 +242,7 @@ preferisce restituire un messaggio di errore opportunamente definito.
 \paragraph*{lockFile.}
 La specifica richiede che il client si blocchi su questa richiesta se il lock sul file specificato non pu\`o essere acquisito
 poich\'e posseduto da un altro client: si sceglie di implementare questa cosa rimettendo in coda la richiesta finch\'e non ha
-successo o fallisce per un motivo diverso da quello previsto.
+successo o fallisce per un motivo diverso da quello appena citato.
 
 \paragraph*{Gestione degli errori.}
 Si sceglie di far galleggiare gli errori verso il chiamante e si mette a disposizione un flag booleano "exit\_on\_fatal\_errors"
@@ -238,20 +250,26 @@ che, se settato, forza la terminazione a seguito di un errore fatale all'interno
 
 \subsection{Makefile.}
 Viene messo a disposizione un Makefile che fornisce - tra gli altri - i target "all" (per creare tutti gli eseguibili),
-"clean" e "cleanall" (per pulire la directory), "test1" (che lancia il test1) e "test2" (che lancia il test2).
+"clean" e "cleanall" (per pulire la directory), "test1" (che lancia il test1), "test2" (che lancia il test2) e "test3" (che
+lancia il test3).
 
 \paragraph*{test1.}
 Il Makefile crea il file di configurazione necessario per avviare il server coi parametri richiesti dalla specifica, dopodich\'e
 esegue il file \textit{script1.sh} che si occupa di avviare il test una volta per ogni politica di rimpiazzamento implementata e di
-eseguire almeno una volta ognuno dei comandi implementati. Durante l'esecuzione, lo script crea anche dei file da inviare al server,
-operazione che potrebbe occupare un po' di tempo a seconda della macchina su cui lo si sta eseguendo in quanto la specifica
-prevede che la capacit\`a del server sia relativamente alta.
+eseguire almeno una volta ognuno dei comandi implementati. Durante l'esecuzione, lo script crea dei file da inviare al server,
+operazione che potrebbe occupare un po' di tempo a seconda della macchina su cui lo si sta eseguendo.
 
 \paragraph*{test2.}
 Il Makefile crea il file di configurazione necessario per avviare il server coi parametri richiesti dalla specifica, dopodich\'e
 esegue il file \textit{src/script2.sh} che si occupa di avviare il test una volta per ogni politica di rimpiazzamento implementata
 utilizzando dei file di input creati appositamente per far partire pi\'u volte l'algoritmo di rimpiazzamento. Durante l'esecuzione,
 lo script crea alcune cartelle contenenti file da inviare al server.
+
+\paragraph*{test3.}
+Il Makefile crea il file di configurazione necessario per avviare il server coi parametri richiesti dalla specifica, dopodich\'e
+esegue il file \textit{src/script3.sh} che si occupa di avviare il test una volta per ogni politica di rimpiazzamento implementata
+assicurando - come da specifica - che ci siano sempre almeno 10 client connessi e che questi inviino (almeno) 5 richieste.
+Durante l'esecuzione, lo script crea alcune cartelle contenenti file da inviare al server.
 
 \subsection{Logging.}
 Durante l'esecuzione, il server scrive all'interno del file di logging specificato dal file di configurazione accedendovi in mutua
@@ -262,8 +280,8 @@ connesso, il numero di client connessi al momento di una nuova connessione e - a
 massimo (raggiunto) di file salvati, la massima dimensione (raggiunta) dello storage in MB.
 
 \paragraph*{statistiche.sh.}
-Viene messo a disposizione lo script \textit{src/statistiche.sh} per effettuare il parsing del file di log creato durante l'
-esecuzione che stamper\`a un sunto del file (di log) specificato da linea di comando.
+Viene messo a disposizione lo script \textit{src/statistiche.sh} per effettuare il parsing del file di log creato durante
+l'esecuzione che ne stamper\`a un sunto.
 
 \pagebreak
 \end{sloppypar}
